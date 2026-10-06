@@ -1,1522 +1,1057 @@
-\# FlightFinder Backend: Production Runbook
+User: [File: pasted-text.txt]
 
+create the rubook.md for git hub and ad the gif animation and profetional
 
+use.ai: # FlightFinder Backend - AWS 3-Tier CI/CD Runbook
+
+<p align="center">
+  <img src="docs/assets/flightfinder-c
+
+FlightFinder Backend - AWS 3-Tier CI/CD Runbook
+
+<p align="center">
+  <img src="docs/assets/flightfinder-cicd.gif" alt="FlightFinder CI/CD pipeline animation" width="900">
+</p>
+
+<p align="center">
+  <strong>Production-style Spring Boot deployment using Jenkins, Docker, AWS Systems Manager, private EC2, and Amazon RDS.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Java-21-orange?logo=openjdk" alt="Java 21">
+  <img src="https://img.shields.io/badge/SpringBoot-Backend-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot">
+  <img src="https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?logo=jenkins&logoColor=white" alt="Jenkins">
+  <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/AWS-ap--south--1-FF9900?logo=amazonwebservices&logoColor=white" alt="AWS">
+  <img src="https://img.shields.io/badge/MySQL-RDS-4479A1?logo=mysql&logoColor=white" alt="MySQL">
+</p>
+
+> [!NOTE]
+> The animated GIF must be stored at docs/assets/flightfinder-cicd.gif. A GIF cannot be generated inside Markdown, but the runbook is configured to display it automatically after it is added to that path.
+
+Table of Contents
+• Overview
+• Architecture
+• Technology Stack
+• Network Design
+• Repository Structure
+• Prerequisites
+• Docker Configuration
+• Jenkins Configuration
+• AWS IAM and SSM Configuration
+• CI/CD Pipeline
+• Deployment Verification
+• Rollback Procedure
+• Troubleshooting
+• Security Considerations
+• Production Improvements
+• Operational Checklist
+
+Overview
+
+FlightFinder uses a three-tier AWS architecture in which the Spring Boot backend runs inside a Docker container on a private EC2 instance. Jenkins builds, tests, packages, and publishes the application before deploying it through AWS Systems Manager.
+
+The private backend instance does not require a public IP address or inbound SSH access.
+
+``text
+Developer
+   |
+   | git push
+   v
+GitHub
+   |
+   v
+Jenkins EC2
+   |
+   | Maven build and test
+   | Maven package
+   | Docker build
+   | Docker push
+   v
+Docker Hub
+   |
+   | AWS Systems Manager
+   v
+Private Backend EC2
+   |
+   | Spring Boot :8080
+   v
+Amazon RDS MySQL :3306
+`
+
+Deployment Status
+
+| Component | Status |
+|---|---|
+| GitHub checkout | Working |
+| Maven build | Working |
+| Maven test stage | Working |
+| JAR packaging | Working |
+| Docker build | Working |
+| Docker Hub push | Working |
+| SSM deployment | Working |
+| Private EC2 container | Running |
+| RDS connectivity | Verify through application logs or a health endpoint |
+
+Architecture
+
+`text
+                         Internet
+                            |
+                            v
+                  +-------------------+
+                  |   Public Subnet   |
+                  |    Jenkins EC2    |
+                  +---------+---------+
+                            |
+                            | IAM + AWS SSM
+                            v
+                  +-------------------+
+                  | Private App Subnet|
+                  |    Backend EC2    |
+                  |    10.0.11.171    |
+                  |  Spring Boot:8080 |
+                  +---------+---------+
+                            |
+                            | MySQL:3306
+                            v
+                  +-------------------+
+                  | Private DB Subnet |
+                  | Amazon RDS MySQL  |
+                  |     bookingdb     |
+                  +-------------------+
+`
+
+CI/CD Sequence
+
+`mermaid
+sequenceDiagram
+    actor Developer
+    participant GitHub
+    participant Jenkins
+    participant DockerHub as Docker Hub
+    participant SSM as AWS Systems Manager
+    participant Backend as Private Backend EC2
+    participant RDS as Amazon RDS MySQL
+
+    Developer->>GitHub: Push to main
+    GitHub->>Jenkins: Trigger pipeline
+    Jenkins->>Jenkins: Maven test and package
+    Jenkins->>Jenkins: Build Docker image
+    Jenkins->>DockerHub: Push BUILDNUMBER and latest tags
+    Jenkins->>SSM: Send deployment command
+    SSM->>Backend: Pull and start container
+    Backend->>RDS: Connect on port 3306
+`
+
+Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Application | Java 21 and Spring Boot |
+| Build | Maven Wrapper |
+| CI/CD | Jenkins |
+| Containerization | Docker |
+| Image registry | Docker Hub |
+| Compute | Amazon EC2 |
+| Remote deployment | AWS Systems Manager |
+| Database | Amazon RDS for MySQL |
+| Source control | GitHub |
+| AWS region | ap-south-1 |
+
+Network Design
+VPC
+
+`text
+CIDR:   10.0.0.0/16
+Region: ap-south-1
+`
+
+Subnets
+
+| Tier | Availability zone placement | CIDR blocks |
+|---|---|---|
+| Public | Two availability zones | 10.0.1.0/24, 10.0.2.0/24 |
+| Private application | Two availability zones | 10.0.11.0/24, 10.0.12.0/24 |
+| Private database | Two availability zones | 10.0.21.0/24, 10.0.22.0/24 |
+
+Current Resources
+
+| Resource | Value |
+|---|---|
+| Backend EC2 instance | i-04e08bcedc0870665 |
+| Backend private IP | 10.0.11.171 |
+| Application port | 8080 |
+| Database | bookingdb |
+| Database port | 3306 |
+| Docker image | ajaydhadi95/flightfinder-backend |
+
+> [!WARNING]
+> Instance IDs, private IP addresses, and image tags can change. Prefer Jenkins environment variables, EC2 tags, or AWS resource discovery instead of permanently hard-coding them.
+
+Repository Structure
+
+`text
+backend/
+├── .mvn/
+├── docs/
+│   └── assets/
+│       └── flightfinder-cicd.gif
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── flightfinderbackend/
+│   │   │       ├── BackendApplication.java
+│   │   │       ├── config/
+│   │   │       ├── controller/
+│   │   │       ├── exception/
+│   │   │       ├── model/
+│   │   │       ├── repository/
+│   │   │       └── service/
+│   │   └── resources/
+│   │       └── application.properties
+│   └── test/
+├── .gitignore
+├── Dockerfile
+├── Jenkinsfile
+├── RUNBOOK.md
+├── mvnw
+├── mvnw.cmd
+└── pom.xml
+`
+
+Git Configuration
+
+The repository tracks the main branch:
+
+`text
+https://github.com/ajaydhadi95-gif/FlightFinder-Applicationbackend.git
+`
+
+Recommended .gitignore entries:
+
+`gitignore
+target/
+bin/
+.class
+
+.idea/
+.vscode/
+.iml
+
+.env
+.log
+`
+
+If bin/ was already committed, remove it from Git tracking:
+
+`bash
+git rm -r --cached bin
+git add .gitignore
+git commit -m "chore: remove generated files from repository"
+git push origin main
+`
+
+Prerequisites
+Jenkins EC2
+
+The Jenkins server requires:
+
+• Jenkins
+• Git
+• Java 21
+• Docker
+• AWS CLI
+• Network access to GitHub and Docker Hub
+• An EC2 instance profile with the required SSM permissions
+• Jenkins Docker Hub credentials
+
+Verify the services and tools:
+
+`bash
+sudo systemctl status jenkins
+sudo systemctl status docker
+
+java --version
+git --version
+docker --version
+aws --version
+`
+
+Confirm that the Jenkins user can run Docker:
+
+`bash
+sudo -u jenkins docker ps
+`
+
+Confirm that the EC2 instance role is available:
+
+`bash
+aws sts get-caller-identity
+`
+
+Backend EC2
+
+The backend instance requires:
+
+• SSM Agent installed and running
+• An EC2 instance profile with AmazonSSMManagedInstanceCore
+• Docker installed and running
+• Outbound access to AWS SSM endpoints and Docker Hub
+• Access to RDS on TCP port 3306
+
+Verify Docker:
+
+`bash
+docker --version
+systemctl is-active docker
+`
+
+Verify SSM Agent:
+
+`bash
+sudo systemctl status amazon-ssm-agent
+`
+
+> [!IMPORTANT]
+> A private instance needs outbound connectivity through a NAT gateway or appropriate VPC endpoints. SSM interface endpoints alone do not provide access to Docker Hub.
+
+Docker Configuration
+
+The application uses a multi-stage Docker build.
+
+`dockerfile
+FROM eclipse-temurin:21-jdk-alpine AS build
+
+WORKDIR /app
+
+COPY .mvn/ .mvn/
+COPY mvnw pom.xml ./
+RUN chmod +x mvnw && ./mvnw dependency:go-offline
+
+COPY src/ src/
+RUN ./mvnw clean package -DskipTests
+
+FROM eclipse-temurin:21-jre-alpine
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+WORKDIR /app
+
+COPY --from=build /app/target/.jar app.jar
+
+USER appuser
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+`
+
+Build locally:
+
+`bash
+docker build -t flightfinder-backend .
+`
+
+Run locally:
+
+`bash
+docker run --rm \
+  --name flightfinder-backend \
+  -p 8080:8080 \
+  flightfinder-backend
+`
+
+Inspect the logs:
+
+`bash
+docker logs -f flightfinder-backend
+`
+
+Jenkins Configuration
+Docker Hub Credential
+
+Create a Jenkins credential with the following values:
 
 | Field | Value |
-
 |---|---|
-
-| Service | FlightFinder Backend (Spring Boot, Java 21) |
-
-| Environment | Production (AWS `ap-south-1`) |
-
-| Document owner | Ajay Dhadi (update with team / on-call alias when applicable) |
-
-| Last reviewed | 2026-10-06 |
-
-| Review cadence | Every 3 months, and after every incident or architecture change |
-
-| Status of this document | Items marked \*\*\[VERIFY]\*\* are not confirmed in the source notes and must be checked before this runbook is relied on during an incident. Items marked \*\*\[RECOMMENDED]\*\* are target-state improvements, not the current state. |
-
-
-
-\---
-
-
-
-\## 1. Purpose and Scope
-
-
-
-This runbook describes how to deploy, operate, monitor, troubleshoot, roll back, and recover the FlightFinder backend service. It is written so that an engineer who did not build the system can operate it at 3 AM.
-
-
-
-\*\*In scope:\*\* Jenkins CI/CD pipeline, Docker image lifecycle, the private backend EC2 instance, AWS SSM-based deployment, connectivity to RDS MySQL.
-
-
-
-\*\*Out of scope:\*\* Frontend (Vite + React) deployment, DNS and CDN (not yet implemented), application feature documentation.
-
-
-
-\---
-
-
-
-\## 2. Service Summary
-
-
-
-| Item | Value |
-
-|---|---|
-
-| Application | Spring Boot (Maven), Java 21 |
-
-| Container image | `ajaydhadi95/flightfinder-backend:<BUILD\_NUMBER>` and `:latest` |
-
-| Registry | Docker Hub |
-
-| Source repository | `https://github.com/ajaydhadi95-gif/FlightFinder-Application\_backend.git` (branch `main`) |
-
-| CI/CD | Jenkins on EC2 (job workspace `/var/lib/jenkins/workspace/flightfinder-Backend`) |
-
-| Runtime host | Private backend EC2 `i-04e08bcedc0870665`, private IP `10.0.11.171` |
-
-| Container name | `flightfinder-backend` |
-
-| App port | `8080` |
-
-| Database | RDS MySQL, port `3306`, database `bookingdb` |
-
-| Deployment channel | AWS Systems Manager (SSM) `AWS-RunShellScript`, no SSH |
-
-| Container user | `appuser` (non-root) |
-
-
-
-\### Dependencies
-
-
-
-| Dependency | Failure impact |
-
-|---|---|
-
-| GitHub | No new builds. Running service is unaffected. |
-
-| Jenkins EC2 | No deployments or rollbacks through the pipeline. Running service is unaffected. Manual rollback via SSM from any admin workstation is still possible (Section 9.2). |
-
-| Docker Hub | New deploys and rollbacks that need an image not cached on the host will fail. The running container is unaffected. |
-
-| AWS SSM | Cannot deploy or run remote commands. Running service is unaffected. |
-
-| RDS MySQL | \*\*Service outage.\*\* Backend cannot serve booking data. |
-
-| Backend EC2 | \*\*Service outage\*\* (single instance, no redundancy today). |
-
-
-
-\---
-
-
-
-\## 3. Architecture
-
-
-
-\### 3.1 Network
-
-
-
-```text
-
-VPC 10.0.0.0/16  (ap-south-1)
-
-
-
-Public subnets            10.0.1.0/24, 10.0.2.0/24     (Jenkins EC2, NAT)
-
-Private app subnets       10.0.11.0/24, 10.0.12.0/24   (Backend EC2 10.0.11.171)
-
-Private DB subnets        10.0.21.0/24, 10.0.22.0/24   (RDS MySQL)
-
-```
-
-
-
-\### 3.2 Request and deployment flow
-
-
-
-```text
-
-Developer -> git push -> GitHub (main)
-
-&#x20;                          |
-
-&#x20;                          v
-
-&#x20;                    Jenkins EC2
-
-&#x20;       Maven test -> Maven package -> Docker build -> Docker push
-
-&#x20;                          |
-
-&#x20;                          v
-
-&#x20;                      Docker Hub
-
-&#x20;                          |
-
-&#x20;                 AWS SSM SendCommand (IAM role)
-
-&#x20;                          |
-
-&#x20;                          v
-
-&#x20;             Private Backend EC2 (10.0.11.171)
-
-&#x20;                 Docker container :8080
-
-&#x20;                          |
-
-&#x20;                          v
-
-&#x20;                   RDS MySQL :3306
-
-```
-
-
-
-\### 3.3 Key design decisions
-
-
-
-\- Backend is in a private subnet with no public IP. Reduces attack surface.
-
-\- Deployments use SSM, not SSH. No SSH keys to manage, access is IAM-controlled and auditable in CloudTrail.
-
-\- Jenkins uses an instance IAM role (`jenkins-ec2-role`), so no AWS access keys are stored on the server.
-
-\- Every image is tagged with the Jenkins build number, which makes rollback to a known version possible.
-
-
-
-\---
-
-
-
-\## 4. Access and Permissions
-
-
-
-\### 4.1 Who can do what
-
-
-
-| Action | Required access |
-
-|---|---|
-
-| Trigger / view Jenkins pipeline | Jenkins login \*\*\[VERIFY: user list and auth method]\*\* |
-
-| Run commands on backend EC2 | IAM permission for `ssm:SendCommand` on the instance |
-
-| View logs | SSM command output or CloudWatch (once configured, see 8.3) |
-
-| Change RDS / security groups | AWS admin IAM role \*\*\[VERIFY]\*\* |
-
-
-
-\### 4.2 IAM role `jenkins-ec2-role` (attached to Jenkins EC2)
-
-
-
-Current permissions:
-
-
-
-```text
-
-ssm:SendCommand
-
-ssm:GetCommandInvocation
-
-ssm:ListCommandInvocations
-
-ssm:ListCommands
-
-ssm:DescribeInstanceInformation
-
-```
-
-
-
-\*\*Current state:\*\* resources are `\*` (lab setup).
-
-\*\*\[RECOMMENDED] before calling this production:\*\* scope `ssm:SendCommand` to the specific instance ARN and document ARN:
-
-
-
-```json
-
-{
-
-&#x20; "Effect": "Allow",
-
-&#x20; "Action": "ssm:SendCommand",
-
-&#x20; "Resource": \[
-
-&#x20;   "arn:aws:ec2:ap-south-1:<ACCOUNT\_ID>:instance/i-04e08bcedc0870665",
-
-&#x20;   "arn:aws:ssm:ap-south-1::document/AWS-RunShellScript"
-
-&#x20; ]
-
+| Kind | Username with password |
+| Credential ID | dockerhub-credentials |
+| Username | Docker Hub username |
+| Password | Docker Hub access token |
+
+Do not use the Docker Hub account password in automation.
+
+Recommended Environment Variables
+
+`groovy
+environment {
+    AWSREGION         = 'ap-south-1'
+    BACKENDINSTANCE   = 'i-04e08bcedc0870665'
+    IMAGEREPOSITORY   = 'ajaydhadi95/flightfinder-backend'
+    CONTAINERNAME     = 'flightfinder-backend'
+    APPLICATIONPORT   = '8080'
 }
-
-```
-
-
-
-\### 4.3 Backend EC2 role
-
-
-
-Must include `AmazonSSMManagedInstanceCore` so the SSM agent shows \*\*Online\*\*. \*\*\[VERIFY: role name]\*\*
-
-
-
-\### 4.4 Credentials inventory
-
-
-
-| Secret | Location | Rotation |
-
-|---|---|---|
-
-| Docker Hub access token | Jenkins credential `dockerhub-credentials` (username `ajaydhadi95`) | \*\*\[RECOMMENDED]\*\* rotate every 90 days |
-
-| AWS access | Instance role, no static keys | Automatic |
-
-| RDS username / password | \*\*\[VERIFY]\*\* how the container receives it (env var, `application.properties`, Secrets Manager). See Section 12.1 | \*\*\[RECOMMENDED]\*\* rotate every 90 days |
-
-| GitHub access for Jenkins | \*\*\[VERIFY]\*\* | \*\*\[RECOMMENDED]\*\* deploy key or fine-grained token |
-
-
-
-\---
-
-
-
-\## 5. Configuration Reference
-
-
-
-\### 5.1 Build
-
-
-
-| Stage | Command |
-
-|---|---|
-
-| Test | `chmod +x mvnw \&\& ./mvnw clean test` |
-
-| Package | `./mvnw clean package -DskipTests` |
-
-| Artifact | `target/backend-0.0.1-SNAPSHOT.jar` |
-
-
-
-Note: the project currently has \*\*no test sources\*\*, so "BUILD SUCCESS" on the test stage does not validate behavior (see Section 14).
-
-
-
-\### 5.2 Docker image
-
-
-
-\- Multi-stage Dockerfile: build on `eclipse-temurin:21-jdk-alpine`, run on `eclipse-temurin:21-jre-alpine`.
-
-\- Runs as non-root `appuser`. Exposes `8080`.
-
-
-
-\### 5.3 Runtime container
-
-
-
-```bash
-
-docker run -d \\
-
-&#x20; --name flightfinder-backend \\
-
-&#x20; --restart unless-stopped \\
-
-&#x20; -p 8080:8080 \\
-
-&#x20; ajaydhadi95/flightfinder-backend:<TAG>
-
-```
-
-
-
-\*\*\[VERIFY]\*\* How database settings reach the container. The command above passes no `-e` variables, so connection details must be baked into `application.properties`. Hardcoded credentials in an image are a production risk (Section 12.1).
-
-
-
-\### 5.4 Repository hygiene
-
-
-
-`.gitignore` must contain `target/`, `bin/`, `\*.class`.
-
-
-
-\---
-
-
-
-\## 6. CI/CD Pipeline
-
-
-
-\### 6.1 Stages
-
-
-
-| # | Stage | Success criteria |
-
-|---|---|---|
-
-| 1 | Checkout | `main` checked out at expected commit |
-
-| 2 | Maven Build \& Test | `BUILD SUCCESS` |
-
-| 3 | Package JAR | JAR produced, Spring Boot repackage succeeded |
-
-| 4 | Docker Build | Tags `:<BUILD\_NUMBER>` and `:latest` created |
-
-| 5 | Docker Login \& Push | Both tags pushed, digest printed |
-
-| 6 | Deploy via SSM | SSM status `Success`, `ResponseCode: 0` |
-
-
-
-\### 6.2 Known benign messages
-
-
-
-\- `No tests to run.` Expected today. Not a failure, but see Section 14.
-
-\- `Error response from daemon: No such container: flightfinder-backend` on the very first deploy. Expected. The `|| true` guards handle it.
-
-
-
-\### 6.3 Pipeline pre-requisites checklist
-
-
-
-\- \[ ] Jenkins service active: `sudo systemctl status jenkins`
-
-\- \[ ] Jenkins user can run Docker: `sudo -u jenkins docker ps`
-
-\- \[ ] Jenkins EC2 has role: `aws sts get-caller-identity`
-
-\- \[ ] Backend EC2 is SSM \*\*Online\*\*:
-
-
-
-```bash
-
-aws ssm describe-instance-information \\
-
-&#x20; --filters "Key=InstanceIds,Values=i-04e08bcedc0870665" \\
-
-&#x20; --region ap-south-1 \\
-
-&#x20; --query "InstanceInformationList\[0].PingStatus"
-
-```
-
-
-
-Expected output: `"Online"`.
-
-
-
-\---
-
-
-
-\## 7. Standard Deployment Procedure
-
-
-
-\### 7.1 Pre-deployment checklist
-
-
-
-\- \[ ] Change is merged to `main` via reviewed pull request \*\*\[RECOMMENDED: enforce with branch protection]\*\*
-
-\- \[ ] Not deploying during a peak traffic window, or the change is approved for it
-
-\- \[ ] Previous good image tag is known (see 7.4 / `docker ps` on the host)
-
-\- \[ ] RDS is healthy (no maintenance in progress)
-
-\- \[ ] Any database schema change is backward compatible with the currently running version
-
-
-
-\### 7.2 Deploy
-
-
-
-1\. Push or merge to `main`.
-
-2\. Jenkins runs the pipeline (or trigger manually: Jenkins -> `flightfinder-Backend` -> Build Now).
-
-3\. Watch the Console Output until `Finished: SUCCESS`.
-
-4\. Note the build number. This is the new `IMAGE\_TAG`.
-
-
-
-What the deploy stage executes on the backend EC2 via SSM:
-
-
-
-```bash
-
-docker pull ajaydhadi95/flightfinder-backend:${IMAGE\_TAG}
-
+`
+
+Jenkins Workspace
+
+`text
+/var/lib/jenkins/workspace/flightfinder-Backend
+`
+
+The workspace path is managed by Jenkins and should not be referenced directly by deployment scripts.
+
+AWS IAM and SSM Configuration
+Jenkins EC2 Role
+
+The Jenkins EC2 instance uses:
+
+`text
+jenkins-ec2-role
+`
+
+A least-privilege policy should restrict deployment commands to the intended managed instance and SSM document.
+
+Example policy template:
+
+`json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SendDeploymentCommand",
+      "Effect": "Allow",
+      "Action": "ssm:SendCommand",
+      "Resource": [
+        "arn:aws:ssm:ap-south-1::document/AWS-RunShellScript",
+        "arn:aws:ec2:ap-south-1:ACCOUNTID:instance/i-04e08bcedc0870665"
+      ]
+    },
+    {
+      "Sid": "ReadCommandStatus",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations",
+        "ssm:ListCommands",
+        "ssm:DescribeInstanceInformation"
+      ],
+      "Resource": ""
+    }
+  ]
+}
+`
+
+Replace ACCOUNTID before applying the policy.
+
+Backend EC2 Role
+
+Attach an instance profile that includes:
+
+`text
+AmazonSSMManagedInstanceCore
+`
+
+Check whether the backend is registered with Systems Manager:
+
+`bash
+aws ssm describe-instance-information \
+  --filters "Key=InstanceIds,Values=i-04e08bcedc0870665" \
+  --region ap-south-1
+`
+
+CI/CD Pipeline
+
+The pipeline executes the following stages:
+
+Checkout the main branch.
+Run Maven tests.
+Package the Spring Boot JAR.
+Build the Docker image.
+Tag the image with the Jenkins build number and latest.
+Push both tags to Docker Hub.
+Deploy the immutable build-number tag through SSM.
+Verify command completion and container status.
+
+Example Jenkinsfile
+
+`groovy
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        AWSREGION       = 'ap-south-1'
+        BACKENDINSTANCE = 'i-04e08bcedc0870665'
+        IMAGEREPOSITORY = 'ajaydhadi95/flightfinder-backend'
+        CONTAINERNAME   = 'flightfinder-backend'
+        APPLICATIONPORT = '8080'
+        IMAGETAG        = "${BUILDNUMBER}"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Maven Build and Test') {
+            steps {
+                sh '''
+                    chmod +x mvnw
+                    ./mvnw clean test
+                '''
+            }
+        }
+
+        stage('Package JAR') {
+            steps {
+                sh './mvnw package -DskipTests'
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    docker build \
+                      -t ${IMAGEREPOSITORY}:${IMAGETAG} \
+                      -t ${IMAGEREPOSITORY}:latest \
+                      .
+                '''
+            }
+        }
+
+        stage('Docker Login and Push') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKERHUBUSERNAME',
+                        passwordVariable: 'DOCKERHUBTOKEN'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKERHUBTOKEN" |
+                          docker login \
+                            --username "$DOCKERHUBUSERNAME" \
+                            --password-stdin
+
+                        docker push ${IMAGEREPOSITORY}:${IMAGETAG}
+                        docker push ${IMAGEREPOSITORY}:latest
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy Through SSM') {
+            steps {
+                script {
+                    def parameters = """{
+                      "commands": [
+                        "set -e",
+                        "docker pull ${IMAGEREPOSITORY}:${IMAGETAG}",
+                        "docker stop ${CONTAINERNAME} || true",
+                        "docker rm ${CONTAINERNAME} || true",
+                        "docker run -d --name ${CONTAINERNAME} --restart unless-stopped -p ${APPLICATIONPORT}:${APPLICATIONPORT} ${IMAGEREPOSITORY}:${IMAGETAG}",
+                        "docker ps --filter name=${CONTAINERNAME}",
+                        "docker logs --tail 50 ${CONTAINERNAME}"
+                      ]
+                    }"""
+
+                    def commandId = sh(
+                        script: """
+                            aws ssm send-command \
+                              --instance-ids '${BACKENDINSTANCE}' \
+                              --document-name 'AWS-RunShellScript' \
+                              --parameters '${parameters}' \
+                              --region '${AWSREGION}' \
+                              --query 'Command.CommandId' \
+                              --output text
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    sh """
+                        aws ssm wait command-executed \
+                          --command-id '${commandId}' \
+                          --instance-id '${BACKENDINSTANCE}' \
+                          --region '${AWSREGION}'
+
+                        aws ssm get-command-invocation \
+                          --command-id '${commandId}' \
+                          --instance-id '${BACKENDINSTANCE}' \
+                          --region '${AWSREGION}'
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            sh 'docker logout || true'
+            cleanWs()
+        }
+
+        success {
+            echo "FlightFinder backend deployment completed successfully."
+        }
+
+        failure {
+            echo "FlightFinder backend deployment failed. Review the stage logs."
+        }
+    }
+}
+`
+
+> [!CAUTION]
+> The deployment above stops the old container before confirming that the new container is healthy. For production, use an ALB with rolling or blue-green deployment to avoid downtime.
+
+Deployment Verification
+Check SSM Command Status
+
+Send a diagnostic command:
+
+`bash
+COMMANDID=$(aws ssm send-command \
+  --instance-ids "i-04e08bcedc0870665" \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["docker ps","docker logs --tail 100 flightfinder-backend"]' \
+  --region ap-south-1 \
+  --query "Command.CommandId" \
+  --output text)
+
+echo "$COMMANDID"
+`
+
+Retrieve the result:
+
+`bash
+aws ssm get-command-invocation \
+  --command-id "$COMMANDID" \
+  --instance-id "i-04e08bcedc0870665" \
+  --region ap-south-1
+`
+
+A successful invocation should report:
+
+`text
+Status: Success
+ResponseCode: 0
+`
+
+Check the Container
+
+Run through SSM:
+
+`bash
+docker ps --filter name=flightfinder-backend
+docker inspect flightfinder-backend
+docker logs --tail 100 flightfinder-backend
+`
+
+Test the Backend
+
+From a resource with network connectivity to the private application subnet:
+
+`bash
+curl --fail --show-error http://10.0.11.171:8080/
+`
+
+For an API endpoint:
+
+`bash
+curl --fail --show-error \
+  http://10.0.11.171:8080/<API-ENDPOINT>
+`
+
+If Spring Boot Actuator is configured:
+
+`bash
+curl --fail --show-error \
+  http://10.0.11.171:8080/actuator/health
+`
+
+Expected response:
+
+`json
+{
+  "status": "UP"
+}
+`
+
+Check Database Connectivity
+
+Review startup logs:
+
+`bash
+docker logs flightfinder-backend 2>&1 |
+  grep -Ei "mysql|datasource|hikari|database|exception|error"
+`
+
+Test network connectivity from the backend EC2:
+
+`bash
+nc -zv <RDS-ENDPOINT> 3306
+`
+
+Do not use the private EC2 URL from a public browser. 10.0.11.171 is a private address and is reachable only through the VPC, VPN, peering, or another connected network path.
+
+Rollback Procedure
+
+Use a previously known-good build-number tag rather than latest.
+
+`bash
+PREVIOUSTAG="<KNOWNGOODBUILDNUMBER>"
+`
+
+Send the rollback command:
+
+`bash
+aws ssm send-command \
+  --instance-ids "i-04e08bcedc0870665" \
+  --document-name "AWS-RunShellScript" \
+  --parameters "commands=[
+    \"set -e\",
+    \"docker pull ajaydhadi95/flightfinder-backend:${PREVIOUSTAG}\",
+    \"docker stop flightfinder-backend || true\",
+    \"docker rm flightfinder-backend || true\",
+    \"docker run -d --name flightfinder-backend --restart unless-stopped -p 8080:8080 ajaydhadi95/flightfinder-backend:${PREVIOUSTAG}\",
+    \"docker ps --filter name=flightfinder-backend\",
+    \"docker logs --tail 50 flightfinder-backend\"
+  ]" \
+  --region ap-south-1
+`
+
+After rollback:
+
+Confirm that the SSM command returned Success.
+Check the Docker container state.
+Check Spring Boot startup logs.
+Call the application health endpoint.
+Record the failed and restored image tags.
+
+Troubleshooting
+Git Reports Untracked Files
+
+Symptom:
+
+`text
+nothing added to commit but untracked files present
+`
+
+Resolution:
+
+`bash
+git status
+git add .
+git commit -m "chore: add backend project files"
+git push origin main
+`
+
+Duplicate bin/ Directory
+
+Symptom: Generated classes and duplicate source files are tracked.
+
+Resolution:
+
+`bash
+git rm -r --cached bin
+printf "\nbin/\ntarget/\n.class\n" >> .gitignore
+git add .gitignore
+git commit -m "chore: remove generated build files"
+git push origin main
+`
+
+AWS CLI Returns NoCredentials
+
+Cause: Jenkins EC2 does not have a usable IAM instance profile.
+
+Checks:
+
+`bash
+aws sts get-caller-identity
+curl -s http://169.254.169.254/latest/meta-data/iam/info
+`
+
+Resolution: Attach the intended IAM role to Jenkins EC2 and verify that its policy permits the required SSM actions.
+
+SSM Permission Is Denied
+
+Symptom: AccessDeniedException for actions such as ssm:SendCommand or ssm:DescribeInstanceInformation.
+
+Resolution: Update the Jenkins instance role with the missing action and restrict the resource scope where AWS supports it.
+
+Backend Is Not Online in SSM
+
+Check the SSM Agent:
+
+`bash
+sudo systemctl status amazon-ssm-agent
+sudo systemctl restart amazon-ssm-agent
+`
+
+Also verify:
+
+• The backend instance has the correct IAM instance profile.
+• DNS resolution is enabled in the VPC.
+• The instance can reach SSM service endpoints.
+• Security groups and network ACLs allow outbound HTTPS.
+• The system clock is synchronized.
+
+Docker Is Missing
+
+Symptom:
+
+`text
+docker: not found
+`
+
+Install Docker using the package process appropriate for the backend instance's Linux distribution, then verify:
+
+`bash
+docker --version
+sudo systemctl enable --now docker
+systemctl is-active docker
+`
+
+Docker Permission Is Denied
+
+Check access as the Jenkins user:
+
+`bash
+sudo -u jenkins docker ps
+`
+
+If Jenkins needs group access:
+
+`bash
+sudo usermod -aG docker jenkins
+sudo systemctl restart jenkins
+`
+
+For an administrative Ubuntu user:
+
+`bash
+sudo usermod -aG docker ubuntu
+`
+
+A new login session is required after changing group membership.
+
+> [!WARNING]
+> Membership in the docker group provides privileges comparable to root access. Limit membership to trusted administrative and automation accounts.
+
+No Existing Container
+
+Message:
+
+`text
+No such container: flightfinder-backend
+`
+
+This is expected during the first deployment. The deployment handles it with:
+
+`bash
 docker stop flightfinder-backend || true
-
 docker rm flightfinder-backend || true
+`
 
-docker run -d --name flightfinder-backend --restart unless-stopped \\
+Container Starts and Immediately Exits
 
-&#x20; -p 8080:8080 ajaydhadi95/flightfinder-backend:${IMAGE\_TAG}
+Inspect its state and logs:
 
-```
-
-
-
-\*\*Important:\*\* this procedure stops the old container before the new one is verified. There is a downtime window of a few seconds to about a minute (Spring Boot startup). This is acceptable for the current single-instance setup. See Section 15 for zero-downtime options.
-
-
-
-\### 7.3 Post-deployment verification (required)
-
-
-
-Run via SSM from Jenkins EC2 or an admin workstation:
-
-
-
-```bash
-
-CMD\_ID=$(aws ssm send-command \\
-
-&#x20; --instance-ids "i-04e08bcedc0870665" \\
-
-&#x20; --document-name "AWS-RunShellScript" \\
-
-&#x20; --parameters 'commands=\["docker ps --filter name=flightfinder-backend","docker logs --tail 80 flightfinder-backend","curl -s -o /dev/null -w \\"HTTP %{http\_code}\\\\n\\" http://localhost:8080/"]' \\
-
-&#x20; --region ap-south-1 \\
-
-&#x20; --query "Command.CommandId" --output text)
-
-
-
-sleep 20
-
-
-
-aws ssm get-command-invocation \\
-
-&#x20; --command-id "$CMD\_ID" \\
-
-&#x20; --instance-id "i-04e08bcedc0870665" \\
-
-&#x20; --region ap-south-1 \\
-
-&#x20; --query "{Status:Status,Output:StandardOutputContent,Err:StandardErrorContent}"
-
-```
-
-
-
-Pass criteria:
-
-
-
-\- \[ ] Container status is `Up`, not `Restarting`
-
-\- \[ ] Logs show Spring Boot `Started BackendApplication` and no `Communications link failure` or `Access denied` for MySQL
-
-\- \[ ] HTTP check returns an expected code (200/401/404 all prove the app is listening; 5xx or connection refused does not)
-
-\- \[ ] A real API smoke test passes: `curl http://localhost:8080/<API-ENDPOINT>` \*\*\[VERIFY: define 2-3 smoke-test endpoints and expected responses and list them here]\*\*
-
-
-
-If any check fails, \*\*roll back immediately\*\* (Section 9).
-
-
-
-\### 7.4 Recording the deployment
-
-
-
-Record in the team channel / change log: date and time, build number, git commit SHA, who deployed, verification result.
-
-
-
-\---
-
-
-
-\## 8. Operations
-
-
-
-\### 8.1 Run a command on the backend (no SSH)
-
-
-
-```bash
-
-aws ssm send-command \\
-
-&#x20; --instance-ids "i-04e08bcedc0870665" \\
-
-&#x20; --document-name "AWS-RunShellScript" \\
-
-&#x20; --parameters 'commands=\["<COMMAND>"]' \\
-
-&#x20; --region ap-south-1
-
-
-
-aws ssm get-command-invocation \\
-
-&#x20; --command-id "<COMMAND\_ID>" \\
-
-&#x20; --instance-id "i-04e08bcedc0870665" \\
-
-&#x20; --region ap-south-1
-
-```
-
-
-
-\### 8.2 Interactive shell via Session Manager (preferred for debugging)
-
-
-
-```bash
-
-aws ssm start-session --target i-04e08bcedc0870665 --region ap-south-1
-
-```
-
-
-
-Requires the Session Manager plugin on the workstation. Sessions are logged and IAM-controlled.
-
-
-
-\### 8.3 Logs
-
-
-
-| Source | How |
-
-|---|---|
-
-| Application logs | `docker logs --tail 200 flightfinder-backend` |
-
-| Follow live | `docker logs -f --tail 50 flightfinder-backend` (via Session Manager) |
-
-| Jenkins build logs | Jenkins console output |
-
-| SSM command history | AWS console -> Systems Manager -> Run Command |
-
-| Audit of who ran what | CloudTrail |
-
-
-
-\*\*\[RECOMMENDED]\*\* Container logs live only on the instance. Ship them to CloudWatch Logs (Docker `awslogs` log driver or the CloudWatch agent) so they survive instance replacement, and set retention (for example 30 days).
-
-
-
-\### 8.4 Routine health commands
-
-
-
-| Purpose | Command (run on backend EC2) |
-
-|---|---|
-
-| Container state | `docker ps -a --filter name=flightfinder-backend` |
-
-| Restart count | `docker inspect -f '{{.RestartCount}}' flightfinder-backend` |
-
-| Resource usage | `docker stats --no-stream flightfinder-backend` |
-
-| Disk | `df -h /` and `docker system df` |
-
-| Memory | `free -m` |
-
-| Running image tag | `docker inspect -f '{{.Config.Image}}' flightfinder-backend` |
-
-| DB reachability | `nc -zv <RDS\_ENDPOINT> 3306` |
-
-
-
-\### 8.5 Housekeeping
-
-
-
-Old images accumulate on the backend EC2 and Jenkins EC2 and can fill the disk.
-
-
-
-```bash
-
-\# keep recent images, remove dangling and unused older than 7 days
-
-docker image prune -a --filter "until=168h" -f
-
-```
-
-
-
-Run weekly or schedule it. \*\*Do not\*\* prune immediately before a rollback window closes: keep at least the last 3 tags available.
-
-
-
-\---
-
-
-
-\## 9. Rollback
-
-
-
-\### 9.1 When to roll back
-
-
-
-Roll back first, investigate second, when after a deployment: the container is crash-looping, the API returns 5xx for core endpoints, DB connection errors appear, or error rate or latency is clearly worse than before.
-
-
-
-\### 9.2 Procedure
-
-
-
-1\. Identify the last known good tag (previous successful Jenkins build number, or Docker Hub tags list).
-
-2\. Deploy that tag via SSM:
-
-
-
-```bash
-
-GOOD\_TAG=3   # replace with last known good build number
-
-
-
-aws ssm send-command \\
-
-&#x20; --instance-ids "i-04e08bcedc0870665" \\
-
-&#x20; --document-name "AWS-RunShellScript" \\
-
-&#x20; --region ap-south-1 \\
-
-&#x20; --parameters "commands=\[\\"docker pull ajaydhadi95/flightfinder-backend:${GOOD\_TAG}\\",\\"docker stop flightfinder-backend || true\\",\\"docker rm flightfinder-backend || true\\",\\"docker run -d --name flightfinder-backend --restart unless-stopped -p 8080:8080 ajaydhadi95/flightfinder-backend:${GOOD\_TAG}\\"]"
-
-```
-
-
-
-3\. Re-run the post-deployment verification (7.3).
-
-4\. Announce the rollback and open an incident record (Section 11).
-
-
-
-\*\*Never roll back using `:latest`.\*\* `latest` always points to the most recent push, which is the bad version.
-
-
-
-\### 9.3 Database considerations
-
-
-
-Rolling back the container does \*\*not\*\* roll back database schema or data changes. If the bad release ran a destructive or incompatible migration, restore from backup or snapshot (Section 13) instead of, or in addition to, container rollback.
-
-
-
-\---
-
-
-
-\## 10. Monitoring and Alerting
-
-
-
-\*\*Current state:\*\* no monitoring or alerting is documented. This is the largest operational gap. Until alarms exist, outages are found by users.
-
-
-
-\### 10.1 \[RECOMMENDED] Minimum alarm set (CloudWatch)
-
-
-
-| Signal | Threshold (starting point) | Action |
-
-|---|---|---|
-
-| EC2 `StatusCheckFailed` | >= 1 for 2 min | Page |
-
-| EC2 CPU | > 80% for 10 min | Notify |
-
-| Memory and disk (via CloudWatch agent) | > 85% | Notify |
-
-| SSM `PingStatus` not Online | 5 min | Notify |
-
-| RDS CPUUtilization | > 80% for 10 min | Notify |
-
-| RDS FreeStorageSpace | < 20% | Notify |
-
-| RDS DatabaseConnections | near max | Notify |
-
-| RDS FreeableMemory | low | Notify |
-
-| ALB `HTTPCode\_Target\_5XX\_Count` (once ALB exists) | > threshold | Page |
-
-| ALB `UnHealthyHostCount` | >= 1 | Page |
-
-| Jenkins job failed | any | Notify |
-
-
-
-Send alarms to an SNS topic with email / chat subscribers.
-
-
-
-\### 10.2 \[RECOMMENDED] Application health endpoint
-
-
-
-\*\*\[VERIFY]\*\* Whether Spring Boot Actuator is in `pom.xml`. If not, add `spring-boot-starter-actuator` and expose only `/actuator/health` (with liveness and readiness). This endpoint is what an ALB target group and container health checks should use.
-
-
-
-Add a Docker health check to the Dockerfile or run command so `docker ps` shows `healthy` or `unhealthy`.
-
-
-
-\### 10.3 Service level objectives (define and agree)
-
-
-
-| SLI | Suggested initial SLO |
-
-|---|---|
-
-| Availability of API | 99.5% monthly (realistic for single instance) |
-
-| p95 latency of search/booking endpoints | \*\*\[DEFINE]\*\* |
-
-| Error rate (5xx) | < 1% |
-
-
-
-\---
-
-
-
-\## 11. Incident Response
-
-
-
-\### 11.1 Severity
-
-
-
-| Sev | Definition | Response target |
-
-|---|---|---|
-
-| SEV1 | Service fully down or data loss/corruption | Immediate, work until resolved |
-
-| SEV2 | Major feature broken or heavy degradation | Within 30 min |
-
-| SEV3 | Minor issue, workaround exists | Next business day |
-
-
-
-\### 11.2 First 10 minutes (any incident)
-
-
-
-1\. \*\*Confirm\*\* the problem and its scope (who is affected, since when).
-
-2\. \*\*Check what changed\*\*: last Jenkins deploy time and build number. If an outage started right after a deploy, \*\*roll back\*\* (Section 9).
-
-3\. \*\*Check the stack from the bottom up\*\* (below).
-
-4\. \*\*Communicate\*\* status to stakeholders and keep a timeline.
-
-5\. \*\*Mitigate\*\* before root-causing.
-
-
-
-\### 11.3 Triage ladder
-
-
-
-```text
-
-1\. Is the EC2 running and SSM Online?        -> 11.4 A
-
-2\. Is the container up?                      -> 11.4 B
-
-3\. Is the app healthy (logs, port 8080)?     -> 11.4 C
-
-4\. Can the app reach RDS?                    -> 11.4 D
-
-5\. Is RDS itself healthy?                    -> 11.4 E
-
-```
-
-
-
-\### 11.4 Playbooks
-
-
-
-\*\*A. Backend EC2 not reachable / SSM Offline\*\*
-
-
-
-\- Check EC2 status checks in console. If impaired, reboot, then stop/start if reboot fails.
-
-\- Check the instance profile still has `AmazonSSMManagedInstanceCore`.
-
-\- Check the instance can reach SSM endpoints (NAT gateway healthy, or VPC endpoints `ssm`, `ssmmessages`, `ec2messages`).
-
-\- The container uses `--restart unless-stopped`, so it should return automatically after a reboot \*\*provided the Docker service is enabled at boot\*\*: verify `systemctl is-enabled docker`.
-
-
-
-\*\*B. Container not running or restarting repeatedly\*\*
-
-
-
-```bash
-
+`bash
 docker ps -a --filter name=flightfinder-backend
-
+docker inspect flightfinder-backend \
+  --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}'
 docker logs --tail 200 flightfinder-backend
+`
 
-docker inspect -f '{{.State.ExitCode}} {{.State.OOMKilled}}' flightfinder-backend
+Common causes include:
 
-```
+• Missing database environment variables
+• Invalid RDS endpoint or credentials
+• RDS security group blocking port 3306
+• Incorrect application profile
+• Port conflicts
+• Unsupported JAR or Java configuration
 
+Image Pull Fails
 
+Test the image manually:
 
-\- `OOMKilled true` -> memory limit or instance too small. Check `free -m`, consider a larger instance or JVM memory flags.
+`bash
+docker pull ajaydhadi95/flightfinder-backend:<IMAGE_TAG>
+`
 
-\- Exit with stack trace -> usually config or DB problem (D). Roll back if just deployed.
+Check:
 
-\- Docker daemon down: `systemctl status docker`, `systemctl restart docker`.
+• The requested tag exists.
+• The backend has outbound internet access.
+• Docker Hub is reachable.
+• Registry credentials are configured if the repository is private.
 
+Security Considerations
 
+The existing design avoids direct SSH deployment, but production deployments should also implement the following controls:
 
-\*\*C. App up but returning errors / slow\*\*
+• Use least-privilege IAM policies instead of unrestricted deployment permissions.
+• Keep the backend EC2 instance in a private subnet without a public IP.
+• Do not open inbound port 22 unless there is a documented operational requirement.
+• Allow backend port 8080 only from an ALB security group or trusted internal source.
+• Allow RDS port 3306 only from the backend security group.
+• Store database credentials in AWS Secrets Manager or SSM Parameter Store.
+• Encrypt RDS storage, snapshots, EBS volumes, and secrets with AWS KMS.
+• Enable CloudTrail, CloudWatch Logs, VPC Flow Logs, and SSM command logging.
+• Use Docker Hub access tokens rather than account passwords.
+• Deploy immutable build-number or digest references rather than relying on latest.
+• Add image vulnerability scanning and dependency scanning to the pipeline.
+• Rotate credentials and tokens according to organizational policy.
+• Do not commit passwords, tokens, .env files, or private keys.
 
+Production Improvements
+Application Load Balancer
 
+Expose the API through an internet-facing ALB while keeping backend instances private:
 
-\- Read logs for exceptions; correlate with the time of first error.
-
-\- Check CPU, memory, disk (8.4). A full disk breaks Docker and logging: prune images (8.5).
-
-\- Check thread / connection pool exhaustion in logs (Hikari messages).
-
-
-
-\*\*D. App cannot connect to database\*\*
-
-
-
-Symptoms: `Communications link failure`, `Access denied`, `Unknown database`, timeouts.
-
-
-
-\- Network: from backend EC2, `nc -zv <RDS\_ENDPOINT> 3306`. If it fails, check the RDS security group allows inbound 3306 from the backend's security group, and that route tables and NACLs allow it.
-
-\- Credentials: confirm username/password/host/db name (`bookingdb`) in the app config match RDS. Check whether the password was rotated.
-
-\- Connection limits: RDS `DatabaseConnections` at max -> check for leaks or restart the app.
-
-
-
-\*\*E. RDS problem\*\*
-
-
-
-\- Check RDS console status and events (failover, maintenance, storage full, reboot).
-
-\- Storage full -> increase allocated storage (online operation), then investigate growth.
-
-\- Instance unhealthy and Multi-AZ enabled -> failover may be automatic. If single-AZ, restore from snapshot (Section 13).
-
-
-
-\*\*F. Pipeline failure (cannot deploy)\*\*
-
-
-
-| Symptom | Likely cause / fix |
-
-|---|---|
-
-| `NoCredentials` in AWS CLI | Role detached from Jenkins EC2. Reattach `jenkins-ec2-role`. |
-
-| `AccessDenied` on `ssm:\*` | Missing IAM permission (for example `ssm:DescribeInstanceInformation`). Add it. |
-
-| `docker: not found` in SSM output | Docker not installed or not on PATH on backend EC2. |
-
-| `permission denied` on `docker.sock` for a user | User not in `docker` group: `sudo usermod -aG docker <user>`, re-login. (Jenkins user already works.) |
-
-| Docker push `denied` / `unauthorized` | Docker Hub token expired or revoked. Create a new token, update Jenkins `dockerhub-credentials`. |
-
-| Docker Hub rate limit on pull | Authenticate pulls or use ECR (Section 15). |
-
-| SSM command `Failed` | `get-command-invocation` and read `StandardErrorContent`. |
-
-| Jenkins disk full | Prune Docker images and old workspaces/builds. |
-
-
-
-\### 11.5 After the incident
-
-
-
-Within 5 business days, write a blameless postmortem: timeline, impact, root cause, what worked, what did not, and action items with owners and dates. Update this runbook with anything learned.
-
-
-
-\---
-
-
-
-\## 12. Security
-
-
-
-\### 12.1 Secrets management \*\*\[RECOMMENDED, high priority]\*\*
-
-
-
-\- Do not store DB credentials in `application.properties` inside the image. Anyone with the image has the password.
-
-\- Use AWS Secrets Manager or SSM Parameter Store (SecureString). Give the backend EC2 role read access to only that secret, and inject at start, for example:
-
-
-
-```bash
-
-DB\_PASS=$(aws ssm get-parameter --name /flightfinder/prod/db\_password \\
-
-&#x20; --with-decryption --query Parameter.Value --output text --region ap-south-1)
-
-docker run -d ... -e SPRING\_DATASOURCE\_PASSWORD="$DB\_PASS" ...
-
-```
-
-
-
-\- Never print secrets in Jenkins console output or SSM command parameters (SSM command text is stored and visible in history).
-
-
-
-\### 12.2 Network
-
-
-
-\- Backend SG inbound 8080 only from Jenkins SG / ALB SG, never `0.0.0.0/0`.
-
-\- RDS SG inbound 3306 only from the backend SG.
-
-\- No public IP on backend or RDS. RDS "Publicly accessible" = No.
-
-\- \*\*\[VERIFY]\*\* Jenkins UI exposure: restrict port 8080/443 to known IPs or put it behind a VPN/ALB with TLS. Jenkins is the highest-value target in this setup because it can deploy to production.
-
-
-
-\### 12.3 IAM
-
-
-
-\- Least privilege on `jenkins-ec2-role` (Section 4.2).
-
-\- Enable CloudTrail and keep it on. SSM commands are auditable there.
-
-\- MFA for human IAM users and root account. No root usage.
-
-
-
-\### 12.4 Supply chain
-
-
-
-\- Pin base images by digest, rebuild regularly for security patches.
-
-\- Scan images (Trivy or Docker Scout) in the pipeline and fail on critical CVEs.
-
-\- Use a Docker Hub \*\*access token\*\*, never the account password (already the case).
-
-\- Keep Jenkins and its plugins patched.
-
-
-
-\### 12.5 Host hardening
-
-
-
-\- Keep OS patched (SSM Patch Manager with a maintenance window).
-
-\- IMDSv2 required on both EC2 instances.
-
-\- Encrypted EBS volumes and encrypted RDS.
-
-
-
-\---
-
-
-
-\## 13. Backup and Disaster Recovery
-
-
-
-\### 13.1 What needs protecting
-
-
-
-| Asset | How it is protected today | Target |
-
-|---|---|---|
-
-| Source code | GitHub | Fine. Consider a mirror. |
-
-| Docker images | Docker Hub tags | Retain at least the last 10 tags; consider ECR |
-
-| Jenkins config / jobs | \*\*\[VERIFY]\*\*, probably only on the instance | Export job config (Jenkinsfile is already in repo). Snapshot Jenkins home EBS volume. |
-
-| Database (bookingdb) | \*\*\[VERIFY]\*\* RDS automated backups and retention | See below |
-
-| Infrastructure | Terraform (per your VPC/EC2/RDS project) | Remote state in S3 with locking |
-
-
-
-\### 13.2 \[RECOMMENDED] RDS settings
-
-
-
-\- Automated backups enabled, retention >= 7 days (14 to 35 preferred).
-
-\- Multi-AZ enabled for production.
-
-\- Deletion protection on. Final snapshot required on delete.
-
-\- Take a manual snapshot before any risky change:
-
-
-
-```bash
-
-aws rds create-db-snapshot \\
-
-&#x20; --db-instance-identifier <RDS\_ID> \\
-
-&#x20; --db-snapshot-identifier pre-release-$(date +%Y%m%d-%H%M) \\
-
-&#x20; --region ap-south-1
-
-```
-
-
-
-\### 13.3 Recovery objectives (set and test)
-
-
-
-| Objective | Suggested starting target |
-
-|---|---|
-
-| RPO (acceptable data loss) | <= 5 minutes with RDS point-in-time restore |
-
-| RTO (acceptable downtime) | <= 1 hour |
-
-
-
-\### 13.4 Recovery procedures
-
-
-
-\*\*Lost backend EC2:\*\* launch a replacement from Terraform in the private app subnet with the same instance profile and security group, confirm SSM Online, update the instance ID in the Jenkins pipeline (or switch to tag-based targeting), run the pipeline to deploy the latest good tag, verify (7.3).
-
-
-
-\*\*Lost or corrupted database:\*\* restore to a new RDS instance from snapshot or point-in-time, point the app at the new endpoint, verify data, then cut over. Note the new endpoint changes connection config.
-
-
-
-\*\*Lost Jenkins:\*\* rebuild from Terraform/AMI, reinstall Jenkins, reattach `jenkins-ec2-role`, add `dockerhub-credentials`, recreate the job from the repo's `Jenkinsfile`. Meanwhile, deploy manually via SSM (Section 9.2 command pattern).
-
-
-
-\*\*Region outage:\*\* not covered today. Document an explicit decision whether multi-region is required.
-
-
-
-\### 13.5 Test restores
-
-
-
-Do a restore drill at least twice a year. A backup that has never been restored is unproven.
-
-
-
-\---
-
-
-
-\## 14. Quality Gates \*\*\[RECOMMENDED]\*\*
-
-
-
-Today the pipeline can deploy code that has zero automated tests. Before treating this as production-grade:
-
-
-
-\- Add unit and integration tests (Testcontainers MySQL is a good fit). Fail the build on test failure.
-
-\- Add a post-deploy smoke test stage in the Jenkinsfile that calls the health endpoint and fails the pipeline if it does not return success.
-
-\- Add automatic rollback on failed smoke test (snippet below).
-
-\- Protect `main`: pull request required, at least one review, status checks required.
-
-
-
-\### Example deploy script with health check and auto-rollback
-
-
-
-```bash
-
-\#!/bin/bash
-
-set -u
-
-NEW\_TAG="$1"
-
-IMAGE="ajaydhadi95/flightfinder-backend"
-
-NAME="flightfinder-backend"
-
-
-
-PREV\_TAG=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null | cut -d: -f2 || true)
-
-
-
-docker pull "$IMAGE:$NEW\_TAG" || exit 1
-
-docker stop "$NAME" 2>/dev/null || true
-
-docker rm "$NAME" 2>/dev/null || true
-
-docker run -d --name "$NAME" --restart unless-stopped -p 8080:8080 "$IMAGE:$NEW\_TAG"
-
-
-
-for i in $(seq 1 30); do
-
-&#x20; if curl -fs http://localhost:8080/actuator/health >/dev/null; then
-
-&#x20;   echo "Healthy on $NEW\_TAG"; exit 0
-
-&#x20; fi
-
-&#x20; sleep 5
-
-done
-
-
-
-echo "Health check failed, rolling back to $PREV\_TAG"
-
-docker logs --tail 100 "$NAME"
-
-docker stop "$NAME"; docker rm "$NAME"
-
-if \[ -n "$PREV\_TAG" ]; then
-
-&#x20; docker run -d --name "$NAME" --restart unless-stopped -p 8080:8080 "$IMAGE:$PREV\_TAG"
-
-fi
-
-exit 1
-
-```
-
-
-
-(Requires the health endpoint from 10.2. Adjust the path if you use a different one.)
-
-
-
-\---
-
-
-
-\## 15. Production Hardening Roadmap
-
-
-
-Ordered by value for effort.
-
-
-
-| Priority | Improvement | Why |
-
-|---|---|---|
-
-| P0 | Move DB credentials to Secrets Manager / Parameter Store | Credentials must not live in the image |
-
-| P0 | CloudWatch alarms + log shipping | Currently you learn about outages from users |
-
-| P0 | Confirm RDS automated backups, Multi-AZ, deletion protection | Data loss protection |
-
-| P0 | Restrict Jenkins exposure and scope IAM to specific instance ARN | Reduce blast radius |
-
-| P1 | Health endpoint + post-deploy smoke test + auto-rollback | Safe deployments |
-
-| P1 | Real automated tests in pipeline | Quality gate |
-
-| P1 | Stop deploying/using `:latest` on the host. Always run an explicit tag | Reproducibility |
-
-| P1 | Image vulnerability scanning in pipeline | Supply chain |
-
-| P2 | Application Load Balancer in public subnets, backend stays private | Proper public API endpoint, TLS termination, health checks |
-
-| P2 | HTTPS with ACM certificate and a Route 53 domain | Encrypted client traffic |
-
-| P2 | Auto Scaling Group with 2 instances across both private app subnets (AZ-1, AZ-2) | Removes single point of failure, enables rolling deploys |
-
-| P2 | Remote Terraform state (S3 + DynamoDB lock) | Safe IaC collaboration |
-
-| P3 | Migrate image registry to ECR (private, IAM-auth, no Docker Hub rate limits) | Tighter security and reliability |
-
-| P3 | Move to ECS/Fargate or EKS | Less host management, built-in rolling and health-based deploys |
-
-| P3 | WAF in front of ALB | Protection against common web attacks |
-
-
-
-\### Target architecture
-
-
-
-```text
-
+`text
 Internet
+   |
+   v
+Application Load Balancer
+   |
+   v
+Private Backend EC2
+   |
+   v
+Amazon RDS MySQL
+`
 
-&#x20;  |
+High Availability
 
-&#x20;  v
+Run multiple backend instances across availability zones:
 
-Route 53 -> ALB (public subnets, HTTPS, WAF)
+`text
+                         ALB
+                          |
+                +---------+---------+
+                |                   |
+                v                   v
+        Backend EC2 AZ-1     Backend EC2 AZ-2
+                |                   |
+                +---------+---------+
+                          |
+                          v
+                    Amazon RDS
+`
 
-&#x20;               |
+Recommended additions:
 
-&#x20;       +-------+-------+
+• Auto Scaling Group for backend instances
+• ALB health checks
+• RDS Multi-AZ
+• HTTPS with AWS Certificate Manager
+• Route 53 DNS
+• AWS WAF
+• CloudWatch dashboards and alarms
+• Centralized application logs
+• Automated database backups
+• Blue-green or rolling deployment
+• Automated rollback on failed health checks
+• ECS, EKS, or AWS CodeDeploy for container orchestration and safer releases
 
-&#x20;       |               |
+Operational Checklist
+Before Deployment
+• [ ] The main branch contains the approved changes.
+• [ ] Jenkins is active.
+• [ ] Docker is active on Jenkins and backend EC2.
+• [ ] The Jenkins user can access Docker.
+• [ ] Jenkins can call aws sts get-caller-identity.
+• [ ] Backend EC2 is online in Systems Manager.
+• [ ] Docker Hub credentials are valid.
+• [ ] Required application secrets are available.
+• [ ] RDS is available and its security group permits backend access.
+• [ ] A rollback image tag has been identified.
 
-&#x20;Backend EC2 (AZ-1)  Backend EC2 (AZ-2)   (private, Auto Scaling Group)
+After Deployment
+• [ ] Jenkins completed with SUCCESS.
+• [ ] SSM returned response code 0.
+• [ ] The expected build-number image is running.
+• [ ] The container restart policy is enabled.
+• [ ] Spring Boot started without errors.
+• [ ] The health endpoint reports UP.
+• [ ] Database connectivity is working.
+• [ ] Application logs contain no unexpected exceptions.
+• [ ] Deployment details were recorded.
 
-&#x20;       |               |
+GIF Animation Setup
 
-&#x20;       +-------+-------+
+Place the GIF at:
 
-&#x20;               |
+`text
+docs/assets/flightfinder-cicd.gif
+`
 
-&#x20;       RDS MySQL Multi-AZ (private DB subnets)
+A useful animation sequence is:
 
+`text
+Developer Push
+      |
+      v
+GitHub main
+      |
+      v
+Jenkins Build and Test
+      |
+      v
+Docker Build
+      |
+      v
+Docker Hub
+      |
+      v
+AWS Systems Manager
+      |
+      v
+Private Backend EC2
+      |
+      v
+Amazon RDS MySQL
+`
 
+Recommended GIF settings:
 
-Jenkins -> Docker Hub/ECR -> SSM / rolling update -> ASG
-
-```
-
-
-
-\---
-
-
-
-\## 16. Change Management
-
-
-
-| Change type | Approval | Notes |
-
-|---|---|---|
-
-| Application release via pipeline | PR review | Follow Section 7 |
-
-| Infrastructure change (Terraform) | Review of `terraform plan` output | Never apply an unreviewed plan to production |
-
-| IAM / security group change | Second person review | Record reason |
-
-| Emergency fix | Verbal approval acceptable | Retroactive PR and note in incident log within 24h |
-
-
-
-Freeze windows: \*\*\[DEFINE]\*\* (for example no non-emergency deploys on Fridays after 4 PM or during known peak booking periods).
-
-
-
-\---
-
-
-
-\## 17. On-Call and Escalation \*\*\[DEFINE]\*\*
-
-
-
-| Role | Name | Contact |
-
-|---|---|---|
-
-| Primary on-call | TBD | TBD |
-
-| Secondary | TBD | TBD |
-
-| AWS account owner | TBD | TBD |
-
-| Escalation (SEV1 not resolved in 30 min) | TBD | TBD |
-
-
-
-\---
-
-
-
-\## 18. Appendix
-
-
-
-\### A. Key identifiers
-
-
-
-| Item | Value |
-
+| Property | Recommendation |
 |---|---|
+| Canvas | 1600 x 900 |
+| Aspect ratio | 16:9 |
+| Duration | 8-12 seconds |
+| Frame rate | 12-20 FPS |
+| Loop | Infinite |
+| File size | Below 10 MB where practical |
+| Theme | Dark AWS architecture style |
+| Text | Large and readable |
+| Sensitive information | Exclude credentials and database endpoints |
 
-| Region | `ap-south-1` |
+Commit the runbook and animation:
 
-| VPC CIDR | `10.0.0.0/16` |
+`bash
+mkdir -p docs/assets
 
-| Backend instance ID | `i-04e08bcedc0870665` |
+git add RUNBOOK.md docs/assets/flightfinder-cicd.gif
+git commit -m "docs: add professional CI/CD deployment runbook"
+git push origin main
+``
 
-| Backend private IP | `10.0.11.171` |
-
-| Docker image | `ajaydhadi95/flightfinder-backend` |
-
-| Jenkins credential ID | `dockerhub-credentials` |
-
-| Jenkins IAM role | `jenkins-ec2-role` |
-
-| Container name | `flightfinder-backend` |
-
-| Database | `bookingdb` on RDS MySQL `:3306` |
-
-| Last documented deployed tag | `4` (update after every deploy) |
-
-| RDS endpoint / identifier | \*\*\[FILL IN]\*\* |
-
-| Backend / RDS / Jenkins security group IDs | \*\*\[FILL IN]\*\* |
-
-
-
-\### B. Known issues history (from initial build)
-
-
-
-| Issue | Resolution |
-
-|---|---|
-
-| Untracked files, nothing committed | `git add .` then commit |
-
-| Duplicate `bin/` directory with `.class` files tracked | `git rm -r --cached bin`; added `bin/`, `target/`, `\*.class` to `.gitignore` |
-
-| AWS CLI `NoCredentials` on Jenkins | Attached `jenkins-ec2-role` |
-
-| Missing `ssm:DescribeInstanceInformation` | Added to the role |
-
-| `docker: not found` on backend EC2 | Installed Docker (29.1.3) |
-
-| Ubuntu user `docker ps` permission denied on Jenkins host | `sudo usermod -aG docker ubuntu`, re-login (Jenkins user was already fine) |
-
-
-
-\### C. Quick command card
-
-
-
-```bash
-
-\# Is the backend instance reachable by SSM?
-
-aws ssm describe-instance-information --region ap-south-1 \\
-
-&#x20; --filters "Key=InstanceIds,Values=i-04e08bcedc0870665" \\
-
-&#x20; --query "InstanceInformationList\[0].PingStatus"
-
-
-
-\# Container + logs
-
-aws ssm send-command --instance-ids i-04e08bcedc0870665 \\
-
-&#x20; --document-name AWS-RunShellScript --region ap-south-1 \\
-
-&#x20; --parameters 'commands=\["docker ps -a","docker logs --tail 100 flightfinder-backend"]'
-
-
-
-\# Open a shell
-
-aws ssm start-session --target i-04e08bcedc0870665 --region ap-south-1
-
-
-
-\# Rollback to a tag: see Section 9.2
-
-```
-
-
-
-\### D. Revision history
-
-
-
-| Date | Author | Change |
-
-|---|---|---|
-
-| 2026-10-06 | Ajay Dhadi | Initial production runbook, based on the CI/CD implementation notes |
-
+<p align="center">
+  <strong>FlightFinder Backend CI/CD</strong><br>
+  GitHub to Jenkins to Docker Hub to AWS SSM to private EC2 to Amazon RDS
+</p>
