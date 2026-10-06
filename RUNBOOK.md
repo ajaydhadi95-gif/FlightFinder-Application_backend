@@ -1,1057 +1,1149 @@
-User: [File: pasted-text.txt]
+# FlightFinder Backend – AWS 3-Tier CI/CD Runbook
 
-create the rubook.md for git hub and ad the gif animation and profetional
+> **Project:** FlightFinder Backend
+> **Architecture:** GitHub → Jenkins → Maven → Docker Hub → AWS SSM → Private Backend EC2 → RDS MySQL
+> **Purpose:** This runbook explains the complete project in simple language for GitHub documentation, troubleshooting, maintenance, and interview explanation.
 
-use.ai: # FlightFinder Backend - AWS 3-Tier CI/CD Runbook
+---
 
-<p align="center">
-  <img src="docs/assets/flightfinder-c
+## 1. Project Overview
 
-FlightFinder Backend - AWS 3-Tier CI/CD Runbook
+This project implements a production-style AWS 3-tier backend deployment with CI/CD.
 
-<p align="center">
-  <img src="docs/assets/flightfinder-cicd.gif" alt="FlightFinder CI/CD pipeline animation" width="900">
-</p>
+### Complete Flow
 
-<p align="center">
-  <strong>Production-style Spring Boot deployment using Jenkins, Docker, AWS Systems Manager, private EC2, and Amazon RDS.</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Java-21-orange?logo=openjdk" alt="Java 21">
-  <img src="https://img.shields.io/badge/SpringBoot-Backend-6DB33F?logo=springboot&logoColor=white" alt="Spring Boot">
-  <img src="https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?logo=jenkins&logoColor=white" alt="Jenkins">
-  <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/AWS-ap--south--1-FF9900?logo=amazonwebservices&logoColor=white" alt="AWS">
-  <img src="https://img.shields.io/badge/MySQL-RDS-4479A1?logo=mysql&logoColor=white" alt="MySQL">
-</p>
-
-> [!NOTE]
-> The animated GIF must be stored at docs/assets/flightfinder-cicd.gif. A GIF cannot be generated inside Markdown, but the runbook is configured to display it automatically after it is added to that path.
-
-Table of Contents
-• Overview
-• Architecture
-• Technology Stack
-• Network Design
-• Repository Structure
-• Prerequisites
-• Docker Configuration
-• Jenkins Configuration
-• AWS IAM and SSM Configuration
-• CI/CD Pipeline
-• Deployment Verification
-• Rollback Procedure
-• Troubleshooting
-• Security Considerations
-• Production Improvements
-• Operational Checklist
-
-Overview
-
-FlightFinder uses a three-tier AWS architecture in which the Spring Boot backend runs inside a Docker container on a private EC2 instance. Jenkins builds, tests, packages, and publishes the application before deploying it through AWS Systems Manager.
-
-The private backend instance does not require a public IP address or inbound SSH access.
-
-``text
+```text
 Developer
-   |
-   | git push
-   v
-GitHub
-   |
-   v
+    |
+    | git push
+    v
+GitHub - main
+    |
+    v
 Jenkins EC2
-   |
-   | Maven build and test
-   | Maven package
-   | Docker build
-   | Docker push
-   v
+    |
+    +--> Maven Build & Test
+    |
+    +--> Maven Package
+    |
+    +--> Docker Build
+    |
+    v
 Docker Hub
-   |
-   | AWS Systems Manager
-   v
+    |
+    | AWS SSM
+    v
 Private Backend EC2
-   |
-   | Spring Boot :8080
-   v
-Amazon RDS MySQL :3306
-`
+    |
+    | Docker Container
+    | Spring Boot :8080
+    v
+RDS MySQL :3306
+```
 
-Deployment Status
+### What happens after a Git push?
 
-| Component | Status |
-|---|---|
-| GitHub checkout | Working |
-| Maven build | Working |
-| Maven test stage | Working |
-| JAR packaging | Working |
-| Docker build | Working |
-| Docker Hub push | Working |
-| SSM deployment | Working |
-| Private EC2 container | Running |
-| RDS connectivity | Verify through application logs or a health endpoint |
+1. Developer pushes code to GitHub.
+2. Jenkins checks out the `main` branch.
+3. Maven builds and tests the application.
+4. Maven packages the Spring Boot application as a JAR.
+5. Jenkins builds a Docker image.
+6. Jenkins pushes the image to Docker Hub.
+7. Jenkins uses AWS Systems Manager (SSM).
+8. SSM deploys the Docker image to the private backend EC2.
+9. The Docker container starts Spring Boot on port `8080`.
+10. Spring Boot connects to RDS MySQL on port `3306`.
 
-Architecture
+---
 
-`text
+# 2. AWS Architecture
+
+## VPC
+
+```text
+VPC: 10.0.0.0/16
+Region: ap-south-1
+```
+
+## Subnets
+
+```text
+Public Subnets
+├── 10.0.1.0/24
+└── 10.0.2.0/24
+
+Private Application Subnets
+├── 10.0.11.0/24
+└── 10.0.12.0/24
+
+Private Database Subnets
+├── 10.0.21.0/24
+└── 10.0.22.0/24
+```
+
+## Architecture Diagram
+
+```text
                          Internet
                             |
                             v
-                  +-------------------+
-                  |   Public Subnet   |
-                  |    Jenkins EC2    |
-                  +---------+---------+
+                    +---------------+
+                    | Public Subnet  |
+                    +---------------+
                             |
-                            | IAM + AWS SSM
                             v
-                  +-------------------+
-                  | Private App Subnet|
-                  |    Backend EC2    |
-                  |    10.0.11.171    |
-                  |  Spring Boot:8080 |
-                  +---------+---------+
+                     Jenkins EC2
                             |
-                            | MySQL:3306
+                     AWS IAM Role
+                            |
+                            | SSM
                             v
-                  +-------------------+
-                  | Private DB Subnet |
-                  | Amazon RDS MySQL  |
-                  |     bookingdb     |
-                  +-------------------+
-`
+                +------------------------+
+                | Private App Subnet     |
+                |                        |
+                |   Backend EC2          |
+                |   10.0.11.171          |
+                |        |               |
+                |   Docker Container     |
+                |   Spring Boot :8080    |
+                +--------+---------------+
+                         |
+                         | MySQL :3306
+                         v
+                +------------------------+
+                | Private DB Subnet      |
+                |                        |
+                | RDS MySQL              |
+                | bookingdb :3306        |
+                +------------------------+
+```
 
-CI/CD Sequence
+### Why is the backend private?
 
-`mermaid
-sequenceDiagram
-    actor Developer
-    participant GitHub
-    participant Jenkins
-    participant DockerHub as Docker Hub
-    participant SSM as AWS Systems Manager
-    participant Backend as Private Backend EC2
-    participant RDS as Amazon RDS MySQL
+The backend EC2 does not need direct internet exposure.
 
-    Developer->>GitHub: Push to main
-    GitHub->>Jenkins: Trigger pipeline
-    Jenkins->>Jenkins: Maven test and package
-    Jenkins->>Jenkins: Build Docker image
-    Jenkins->>DockerHub: Push BUILDNUMBER and latest tags
-    Jenkins->>SSM: Send deployment command
-    SSM->>Backend: Pull and start container
-    Backend->>RDS: Connect on port 3306
-`
+Keeping it in a private subnet provides better network isolation.
 
-Technology Stack
+The project uses AWS SSM instead of SSH for deployment, so the backend does not require a public IP for deployment.
 
-| Layer | Technology |
-|---|---|
-| Application | Java 21 and Spring Boot |
-| Build | Maven Wrapper |
-| CI/CD | Jenkins |
-| Containerization | Docker |
-| Image registry | Docker Hub |
-| Compute | Amazon EC2 |
-| Remote deployment | AWS Systems Manager |
-| Database | Amazon RDS for MySQL |
-| Source control | GitHub |
-| AWS region | ap-south-1 |
+---
 
-Network Design
-VPC
+# 3. AWS Resources
 
-`text
-CIDR:   10.0.0.0/16
-Region: ap-south-1
-`
+| Resource            | Configuration                      |
+| ------------------- | ---------------------------------- |
+| Region              | `ap-south-1`                       |
+| VPC                 | `10.0.0.0/16`                      |
+| Public Subnets      | `10.0.1.0/24`, `10.0.2.0/24`       |
+| Private App Subnets | `10.0.11.0/24`, `10.0.12.0/24`     |
+| Private DB Subnets  | `10.0.21.0/24`, `10.0.22.0/24`     |
+| Backend EC2         | `i-04e08bcedc0870665`              |
+| Backend Private IP  | `10.0.11.171`                      |
+| Backend Port        | `8080`                             |
+| Database            | RDS MySQL                          |
+| Database Name       | `bookingdb`                        |
+| Database Port       | `3306`                             |
+| Jenkins IAM Role    | `jenkins-ec2-role`                 |
+| Docker Image        | `ajaydhadi95/flightfinder-backend` |
 
-Subnets
+> **Security:** Never commit database passwords, Docker Hub tokens, AWS access keys, or other secrets to this repository.
 
-| Tier | Availability zone placement | CIDR blocks |
-|---|---|---|
-| Public | Two availability zones | 10.0.1.0/24, 10.0.2.0/24 |
-| Private application | Two availability zones | 10.0.11.0/24, 10.0.12.0/24 |
-| Private database | Two availability zones | 10.0.21.0/24, 10.0.22.0/24 |
+---
 
-Current Resources
+# 4. Backend Application
 
-| Resource | Value |
-|---|---|
-| Backend EC2 instance | i-04e08bcedc0870665 |
-| Backend private IP | 10.0.11.171 |
-| Application port | 8080 |
-| Database | bookingdb |
-| Database port | 3306 |
-| Docker image | ajaydhadi95/flightfinder-backend |
+## Technology Stack
 
-> [!WARNING]
-> Instance IDs, private IP addresses, and image tags can change. Prefer Jenkins environment variables, EC2 tags, or AWS resource discovery instead of permanently hard-coding them.
+```text
+Java 21
+Spring Boot
+Maven
+MySQL
+Docker
+AWS EC2
+AWS RDS
+AWS SSM
+Jenkins
+GitHub
+Docker Hub
+```
 
-Repository Structure
+## Project Structure
 
-`text
+```text
 backend/
 ├── .mvn/
-├── docs/
-│   └── assets/
-│       └── flightfinder-cicd.gif
-├── src/
-│   ├── main/
-│   │   ├── java/
-│   │   │   └── flightfinderbackend/
-│   │   │       ├── BackendApplication.java
-│   │   │       ├── config/
-│   │   │       ├── controller/
-│   │   │       ├── exception/
-│   │   │       ├── model/
-│   │   │       ├── repository/
-│   │   │       └── service/
-│   │   └── resources/
-│   │       └── application.properties
-│   └── test/
-├── .gitignore
 ├── Dockerfile
 ├── Jenkinsfile
-├── RUNBOOK.md
 ├── mvnw
 ├── mvnw.cmd
-└── pom.xml
-`
+├── pom.xml
+├── RUNBOOK.md
+└── src/
+    ├── main/
+    │   ├── java/
+    │   │   └── flightfinder_backend/
+    │   │       ├── BackendApplication.java
+    │   │       ├── config/
+    │   │       ├── controller/
+    │   │       ├── exception/
+    │   │       ├── model/
+    │   │       ├── repository/
+    │   │       └── service/
+    │   └── resources/
+    │       └── application.properties
+    └── test/
+```
 
-Git Configuration
+---
 
-The repository tracks the main branch:
+# 5. GitHub Repository
 
-`text
-https://github.com/ajaydhadi95-gif/FlightFinder-Applicationbackend.git
-`
+Repository:
 
-Recommended .gitignore entries:
+```text
+FlightFinder-Application_backend
+```
 
-`gitignore
+GitHub:
+
+```text
+https://github.com/ajaydhadi95-gif/FlightFinder-Application_backend.git
+```
+
+Branch:
+
+```text
+main
+```
+
+GitHub is the source-code repository.
+
+### Git Flow
+
+```text
+Developer
+    |
+    | git add .
+    | git commit
+    | git push
+    v
+GitHub
+    |
+    v
+Jenkins
+```
+
+---
+
+# 6. Git Cleanup
+
+During development, an unwanted `bin/` directory was found.
+
+It contained duplicate project files and compiled `.class` files.
+
+It was removed from Git tracking:
+
+```bash
+git rm -r --cached bin
+```
+
+`.gitignore` was updated:
+
+```gitignore
 target/
 bin/
-.class
+*.class
+```
 
-.idea/
-.vscode/
-.iml
+Then:
 
-.env
-.log
-`
-
-If bin/ was already committed, remove it from Git tracking:
-
-`bash
-git rm -r --cached bin
-git add .gitignore
-git commit -m "chore: remove generated files from repository"
+```bash
+git add .
+git commit -m "Initial backend project setup"
 git push origin main
-`
+```
 
-Prerequisites
-Jenkins EC2
+### Why `.gitignore`?
 
-The Jenkins server requires:
+Generated build files should not normally be committed to Git.
 
-• Jenkins
-• Git
-• Java 21
-• Docker
-• AWS CLI
-• Network access to GitHub and Docker Hub
-• An EC2 instance profile with the required SSM permissions
-• Jenkins Docker Hub credentials
+Examples:
 
-Verify the services and tools:
+```text
+target/
+bin/
+*.class
+```
 
-`bash
-sudo systemctl status jenkins
-sudo systemctl status docker
+These files can be recreated during the build.
 
-java --version
-git --version
-docker --version
-aws --version
-`
+---
 
-Confirm that the Jenkins user can run Docker:
-
-`bash
-sudo -u jenkins docker ps
-`
-
-Confirm that the EC2 instance role is available:
-
-`bash
-aws sts get-caller-identity
-`
-
-Backend EC2
-
-The backend instance requires:
-
-• SSM Agent installed and running
-• An EC2 instance profile with AmazonSSMManagedInstanceCore
-• Docker installed and running
-• Outbound access to AWS SSM endpoints and Docker Hub
-• Access to RDS on TCP port 3306
-
-Verify Docker:
-
-`bash
-docker --version
-systemctl is-active docker
-`
-
-Verify SSM Agent:
-
-`bash
-sudo systemctl status amazon-ssm-agent
-`
-
-> [!IMPORTANT]
-> A private instance needs outbound connectivity through a NAT gateway or appropriate VPC endpoints. SSM interface endpoints alone do not provide access to Docker Hub.
-
-Docker Configuration
+# 7. Dockerfile
 
 The application uses a multi-stage Docker build.
 
-`dockerfile
-FROM eclipse-temurin:21-jdk-alpine AS build
+## Build Stage
 
-WORKDIR /app
+```text
+eclipse-temurin:21-jdk-alpine
+```
 
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-RUN chmod +x mvnw && ./mvnw dependency:go-offline
+This stage contains the JDK and builds the Spring Boot application.
 
-COPY src/ src/
-RUN ./mvnw clean package -DskipTests
+## Runtime Stage
 
-FROM eclipse-temurin:21-jre-alpine
+```text
+eclipse-temurin:21-jre-alpine
+```
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+Only the JRE is required to run the final JAR.
 
-WORKDIR /app
+### Why multi-stage Docker?
 
-COPY --from=build /app/target/.jar app.jar
+It keeps the final runtime image smaller because build tools are not required in the runtime container.
 
-USER appuser
+The container also runs as a non-root user:
 
-EXPOSE 8080
+```text
+appuser
+```
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
-`
+Container port:
 
-Build locally:
+```text
+8080
+```
 
-`bash
+Docker image:
+
+```text
+ajaydhadi95/flightfinder-backend
+```
+
+---
+
+# 8. Local Docker Verification
+
+The Dockerfile was tested locally:
+
+```bash
 docker build -t flightfinder-backend .
-`
+```
 
-Run locally:
+A successful build verified that the following work together:
 
-`bash
-docker run --rm \
-  --name flightfinder-backend \
-  -p 8080:8080 \
-  flightfinder-backend
-`
+```text
+Dockerfile
+Maven wrapper
+pom.xml
+Spring Boot source
+Java 21
+```
 
-Inspect the logs:
+---
 
-`bash
-docker logs -f flightfinder-backend
-`
+# 9. Jenkins Server
 
-Jenkins Configuration
-Docker Hub Credential
+Jenkins is running on an AWS EC2 instance.
 
-Create a Jenkins credential with the following values:
+Check Jenkins:
 
-| Field | Value |
-|---|---|
-| Kind | Username with password |
-| Credential ID | dockerhub-credentials |
-| Username | Docker Hub username |
-| Password | Docker Hub access token |
+```bash
+sudo systemctl status jenkins
+```
 
-Do not use the Docker Hub account password in automation.
+Expected:
 
-Recommended Environment Variables
+```text
+Active: active (running)
+```
 
-`groovy
-environment {
-    AWSREGION         = 'ap-south-1'
-    BACKENDINSTANCE   = 'i-04e08bcedc0870665'
-    IMAGEREPOSITORY   = 'ajaydhadi95/flightfinder-backend'
-    CONTAINERNAME     = 'flightfinder-backend'
-    APPLICATIONPORT   = '8080'
-}
-`
+Jenkins workspace:
 
-Jenkins Workspace
-
-`text
+```text
 /var/lib/jenkins/workspace/flightfinder-Backend
-`
+```
 
-The workspace path is managed by Jenkins and should not be referenced directly by deployment scripts.
+Jenkins performs the CI/CD process.
 
-AWS IAM and SSM Configuration
-Jenkins EC2 Role
+---
 
-The Jenkins EC2 instance uses:
+# 10. Jenkins Docker Permission
 
-`text
+Jenkins must be able to execute Docker commands.
+
+Verification:
+
+```bash
+sudo -u jenkins docker ps
+```
+
+This worked successfully.
+
+Therefore Jenkins can execute:
+
+```text
+docker build
+docker login
+docker push
+```
+
+### Important
+
+If the Ubuntu user manually runs:
+
+```bash
+docker ps
+```
+
+and receives a Docker socket permission error, that does not mean Jenkins is broken.
+
+Jenkins uses the `jenkins` user.
+
+Optional fix for manual Ubuntu Docker access:
+
+```bash
+sudo usermod -aG docker ubuntu
+```
+
+Then log out and log in again.
+
+---
+
+# 11. Jenkins AWS IAM Role
+
+Initially AWS CLI returned:
+
+```text
+NoCredentials
+```
+
+Instead of storing AWS access keys on Jenkins, an IAM role was attached to the Jenkins EC2.
+
+IAM role:
+
+```text
 jenkins-ec2-role
-`
+```
 
-A least-privilege policy should restrict deployment commands to the intended managed instance and SSM document.
+Verification:
 
-Example policy template:
+```bash
+aws sts get-caller-identity
+```
 
-`json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "SendDeploymentCommand",
-      "Effect": "Allow",
-      "Action": "ssm:SendCommand",
-      "Resource": [
-        "arn:aws:ssm:ap-south-1::document/AWS-RunShellScript",
-        "arn:aws:ec2:ap-south-1:ACCOUNTID:instance/i-04e08bcedc0870665"
-      ]
-    },
-    {
-      "Sid": "ReadCommandStatus",
-      "Effect": "Allow",
-      "Action": [
-        "ssm:GetCommandInvocation",
-        "ssm:ListCommandInvocations",
-        "ssm:ListCommands",
-        "ssm:DescribeInstanceInformation"
-      ],
-      "Resource": ""
-    }
-  ]
-}
-`
+This worked successfully after the role was attached.
 
-Replace ACCOUNTID before applying the policy.
+### Why IAM Role?
 
-Backend EC2 Role
+```text
+Jenkins EC2
+    |
+    | IAM Role
+    v
+AWS Services
+```
 
-Attach an instance profile that includes:
+This avoids storing long-lived AWS access keys on the Jenkins server.
 
-`text
-AmazonSSMManagedInstanceCore
-`
+---
 
-Check whether the backend is registered with Systems Manager:
+# 12. AWS Systems Manager – SSM
 
-`bash
-aws ssm describe-instance-information \
-  --filters "Key=InstanceIds,Values=i-04e08bcedc0870665" \
-  --region ap-south-1
-`
+The backend EC2 is private.
 
-CI/CD Pipeline
+Jenkins deploys to it using AWS Systems Manager instead of SSH.
 
-The pipeline executes the following stages:
+Required permissions include:
 
-Checkout the main branch.
-Run Maven tests.
-Package the Spring Boot JAR.
-Build the Docker image.
-Tag the image with the Jenkins build number and latest.
-Push both tags to Docker Hub.
-Deploy the immutable build-number tag through SSM.
-Verify command completion and container status.
+```text
+ssm:SendCommand
+ssm:GetCommandInvocation
+ssm:ListCommandInvocations
+ssm:ListCommands
+ssm:DescribeInstanceInformation
+```
 
-Example Jenkinsfile
+For the lab/testing setup:
 
-`groovy
-pipeline {
-    agent any
+```text
+Resource: *
+```
 
-    options {
-        timestamps()
-        disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '20'))
-    }
+For production, IAM permissions should be restricted as much as practical.
 
-    environment {
-        AWSREGION       = 'ap-south-1'
-        BACKENDINSTANCE = 'i-04e08bcedc0870665'
-        IMAGEREPOSITORY = 'ajaydhadi95/flightfinder-backend'
-        CONTAINERNAME   = 'flightfinder-backend'
-        APPLICATIONPORT = '8080'
-        IMAGETAG        = "${BUILDNUMBER}"
-    }
+---
 
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
+# 13. Backend EC2
 
-        stage('Maven Build and Test') {
-            steps {
-                sh '''
-                    chmod +x mvnw
-                    ./mvnw clean test
-                '''
-            }
-        }
+Backend instance:
 
-        stage('Package JAR') {
-            steps {
-                sh './mvnw package -DskipTests'
-            }
-        }
+```text
+Instance ID:
+i-04e08bcedc0870665
+```
 
-        stage('Docker Build') {
-            steps {
-                sh '''
-                    docker build \
-                      -t ${IMAGEREPOSITORY}:${IMAGETAG} \
-                      -t ${IMAGEREPOSITORY}:latest \
-                      .
-                '''
-            }
-        }
+Private IP:
 
-        stage('Docker Login and Push') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'dockerhub-credentials',
-                        usernameVariable: 'DOCKERHUBUSERNAME',
-                        passwordVariable: 'DOCKERHUBTOKEN'
-                    )
-                ]) {
-                    sh '''
-                        echo "$DOCKERHUBTOKEN" |
-                          docker login \
-                            --username "$DOCKERHUBUSERNAME" \
-                            --password-stdin
+```text
+10.0.11.171
+```
 
-                        docker push ${IMAGEREPOSITORY}:${IMAGETAG}
-                        docker push ${IMAGEREPOSITORY}:latest
-                        docker logout
-                    '''
-                }
-            }
-        }
+The instance is in the private application subnet.
 
-        stage('Deploy Through SSM') {
-            steps {
-                script {
-                    def parameters = """{
-                      "commands": [
-                        "set -e",
-                        "docker pull ${IMAGEREPOSITORY}:${IMAGETAG}",
-                        "docker stop ${CONTAINERNAME} || true",
-                        "docker rm ${CONTAINERNAME} || true",
-                        "docker run -d --name ${CONTAINERNAME} --restart unless-stopped -p ${APPLICATIONPORT}:${APPLICATIONPORT} ${IMAGEREPOSITORY}:${IMAGETAG}",
-                        "docker ps --filter name=${CONTAINERNAME}",
-                        "docker logs --tail 50 ${CONTAINERNAME}"
-                      ]
-                    }"""
+SSM Agent was configured and the instance appeared as:
 
-                    def commandId = sh(
-                        script: """
-                            aws ssm send-command \
-                              --instance-ids '${BACKENDINSTANCE}' \
-                              --document-name 'AWS-RunShellScript' \
-                              --parameters '${parameters}' \
-                              --region '${AWSREGION}' \
-                              --query 'Command.CommandId' \
-                              --output text
-                        """,
-                        returnStdout: true
-                    ).trim()
+```text
+Online
+```
 
-                    sh """
-                        aws ssm wait command-executed \
-                          --command-id '${commandId}' \
-                          --instance-id '${BACKENDINSTANCE}' \
-                          --region '${AWSREGION}'
+This allows Jenkins to execute remote commands without SSH.
 
-                        aws ssm get-command-invocation \
-                          --command-id '${commandId}' \
-                          --instance-id '${BACKENDINSTANCE}' \
-                          --region '${AWSREGION}'
-                    """
-                }
-            }
-        }
-    }
+---
 
-    post {
-        always {
-            sh 'docker logout || true'
-            cleanWs()
-        }
+# 14. Docker on Backend EC2
 
-        success {
-            echo "FlightFinder backend deployment completed successfully."
-        }
+The first SSM test showed:
 
-        failure {
-            echo "FlightFinder backend deployment failed. Review the stage logs."
-        }
-    }
-}
-`
+```text
+docker: not found
+```
 
-> [!CAUTION]
-> The deployment above stops the old container before confirming that the new container is healthy. For production, use an ALB with rolling or blue-green deployment to avoid downtime.
+Docker was installed on the backend EC2.
 
-Deployment Verification
-Check SSM Command Status
+Verification:
 
-Send a diagnostic command:
+```bash
+docker --version
+```
 
-`bash
-COMMANDID=$(aws ssm send-command \
-  --instance-ids "i-04e08bcedc0870665" \
-  --document-name "AWS-RunShellScript" \
-  --parameters 'commands=["docker ps","docker logs --tail 100 flightfinder-backend"]' \
-  --region ap-south-1 \
-  --query "Command.CommandId" \
-  --output text)
+Result:
 
-echo "$COMMANDID"
-`
+```text
+Docker version 29.1.3
+```
 
-Retrieve the result:
+Docker service:
 
-`bash
-aws ssm get-command-invocation \
-  --command-id "$COMMANDID" \
-  --instance-id "i-04e08bcedc0870665" \
-  --region ap-south-1
-`
+```bash
+systemctl is-active docker
+```
 
-A successful invocation should report:
+Result:
 
-`text
-Status: Success
+```text
+active
+```
+
+Final relationship:
+
+```text
+Jenkins EC2
+     |
+     | AWS SSM
+     v
+Private Backend EC2
+     |
+     v
+Docker
+     |
+     v
+Spring Boot Container
+```
+
+---
+
+# 15. Docker Hub
+
+Docker Hub repository:
+
+```text
+ajaydhadi95/flightfinder-backend
+```
+
+Jenkins credential ID:
+
+```text
+dockerhub-credentials
+```
+
+Credential contains:
+
+```text
+Username: ajaydhadi95
+Password: Docker Hub Access Token
+```
+
+> Never put the actual token in this file or GitHub.
+
+Images are tagged with the Jenkins build number.
+
+Example:
+
+```text
+ajaydhadi95/flightfinder-backend:4
+```
+
+The `latest` tag is also pushed:
+
+```text
+ajaydhadi95/flightfinder-backend:latest
+```
+
+---
+
+# 16. Jenkins CI/CD Pipeline
+
+The pipeline has six main stages:
+
+```text
+1. Checkout
+2. Maven Build & Test
+3. Package JAR
+4. Docker Build
+5. Docker Login & Push
+6. Deploy to Backend via SSM
+```
+
+Complete pipeline:
+
+```text
+GitHub
+   |
+   v
+Checkout
+   |
+   v
+Maven Test
+   |
+   v
+Maven Package
+   |
+   v
+Docker Build
+   |
+   v
+Docker Hub Push
+   |
+   v
+AWS SSM
+   |
+   v
+Private Backend EC2
+```
+
+---
+
+# 17. Checkout Stage
+
+Jenkins checks out:
+
+```text
+Repository: FlightFinder-Application_backend
+Branch: main
+```
+
+Successful build checked out:
+
+```text
+Commit:
+626c867611e620953ac297a4ceff05c952db822c
+```
+
+Commit message:
+
+```text
+Initial backend project setup
+```
+
+---
+
+# 18. Maven Build & Test
+
+Jenkins runs:
+
+```bash
+chmod +x mvnw
+./mvnw clean test
+```
+
+Result:
+
+```text
+BUILD SUCCESS
+```
+
+The project currently has no test source files:
+
+```text
+No tests to run.
+```
+
+This is not a pipeline failure.
+
+### Purpose
+
+This stage validates that the Java application can compile and that available tests pass.
+
+---
+
+# 19. Maven Package
+
+Jenkins runs:
+
+```bash
+./mvnw clean package -DskipTests
+```
+
+JAR generated:
+
+```text
+target/backend-0.0.1-SNAPSHOT.jar
+```
+
+Result:
+
+```text
+BUILD SUCCESS
+```
+
+### Why package again?
+
+The test stage validates the project.
+
+The package stage creates the deployable Spring Boot JAR.
+
+---
+
+# 20. Docker Build
+
+Jenkins creates two tags:
+
+```bash
+docker build \
+  -t ajaydhadi95/flightfinder-backend:${BUILD_NUMBER} \
+  -t ajaydhadi95/flightfinder-backend:latest \
+  .
+```
+
+For build `4`:
+
+```text
+ajaydhadi95/flightfinder-backend:4
+ajaydhadi95/flightfinder-backend:latest
+```
+
+### Why build number?
+
+Every deployment gets a traceable version.
+
+Example:
+
+```text
+Build 4 → Image :4
+Build 5 → Image :5
+Build 6 → Image :6
+```
+
+This is safer than relying only on `latest`.
+
+---
+
+# 21. Docker Push
+
+Jenkins logs into Docker Hub using:
+
+```text
+dockerhub-credentials
+```
+
+Then pushes:
+
+```bash
+docker push ajaydhadi95/flightfinder-backend:4
+docker push ajaydhadi95/flightfinder-backend:latest
+```
+
+Both images were successfully pushed.
+
+Successful image digest:
+
+```text
+sha256:69b8e3a83c5c82f7536357bc118214b92f48a067337fd3f9fafdc1e9986
+```
+
+---
+
+# 22. SSM Deployment
+
+After Docker Hub push, Jenkins sends an SSM command to:
+
+```text
+i-04e08bcedc0870665
+```
+
+Deployment commands:
+
+```bash
+docker pull ajaydhadi95/flightfinder-backend:${IMAGE_TAG}
+
+docker stop flightfinder-backend || true
+
+docker rm flightfinder-backend || true
+
+docker run -d \
+  --name flightfinder-backend \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  ajaydhadi95/flightfinder-backend:${IMAGE_TAG}
+```
+
+### What happens?
+
+```text
+1. Pull new image
+2. Stop old container
+3. Remove old container
+4. Start new container
+5. Restart automatically if the server/container restarts
+```
+
+---
+
+# 23. First Deployment – Expected Message
+
+On the first deployment:
+
+```text
+Error response from daemon:
+No such container: flightfinder-backend
+```
+
+This happened because there was no old container.
+
+The commands use:
+
+```bash
+|| true
+```
+
+Therefore the deployment continued.
+
+The new container was created successfully.
+
+---
+
+# 24. Successful Deployment
+
+SSM returned:
+
+```text
 ResponseCode: 0
-`
+Status: Success
+StatusDetails: Success
+```
 
-Check the Container
+Image deployed:
 
-Run through SSM:
+```text
+ajaydhadi95/flightfinder-backend:4
+```
 
-`bash
-docker ps --filter name=flightfinder-backend
-docker inspect flightfinder-backend
-docker logs --tail 100 flightfinder-backend
-`
+Final Jenkins result:
 
-Test the Backend
+```text
+Finished: SUCCESS
+```
 
-From a resource with network connectivity to the private application subnet:
+---
 
-`bash
-curl --fail --show-error http://10.0.11.171:8080/
-`
+# 25. Verified Pipeline Result
 
-For an API endpoint:
+| Stage               | Result    |
+| ------------------- | --------- |
+| Checkout            | ✅ SUCCESS |
+| Maven Build & Test  | ✅ SUCCESS |
+| Maven Package       | ✅ SUCCESS |
+| Docker Build        | ✅ SUCCESS |
+| Docker Login & Push | ✅ SUCCESS |
+| SSM Deployment      | ✅ SUCCESS |
 
-`bash
-curl --fail --show-error \
-  http://10.0.11.171:8080/<API-ENDPOINT>
-`
+---
 
-If Spring Boot Actuator is configured:
+# 26. Current Deployment
 
-`bash
-curl --fail --show-error \
-  http://10.0.11.171:8080/actuator/health
-`
+Current image:
 
-Expected response:
+```text
+ajaydhadi95/flightfinder-backend:4
+```
 
-`json
-{
-  "status": "UP"
-}
-`
+Latest tag:
 
-Check Database Connectivity
+```text
+ajaydhadi95/flightfinder-backend:latest
+```
 
-Review startup logs:
+Backend:
 
-`bash
-docker logs flightfinder-backend 2>&1 |
-  grep -Ei "mysql|datasource|hikari|database|exception|error"
-`
+```text
+Instance: i-04e08bcedc0870665
+Private IP: 10.0.11.171
+Application Port: 8080
+```
 
-Test network connectivity from the backend EC2:
+Database:
 
-`bash
-nc -zv <RDS-ENDPOINT> 3306
-`
+```text
+RDS MySQL
+Database: bookingdb
+Port: 3306
+```
 
-Do not use the private EC2 URL from a public browser. 10.0.11.171 is a private address and is reachable only through the VPC, VPN, peering, or another connected network path.
+---
 
-Rollback Procedure
+# 27. Check Backend Container Through SSM
 
-Use a previously known-good build-number tag rather than latest.
+Because the backend is private, use SSM.
 
-`bash
-PREVIOUSTAG="<KNOWNGOODBUILDNUMBER>"
-`
+From Jenkins EC2:
 
-Send the rollback command:
-
-`bash
+```bash
 aws ssm send-command \
   --instance-ids "i-04e08bcedc0870665" \
   --document-name "AWS-RunShellScript" \
-  --parameters "commands=[
-    \"set -e\",
-    \"docker pull ajaydhadi95/flightfinder-backend:${PREVIOUSTAG}\",
-    \"docker stop flightfinder-backend || true\",
-    \"docker rm flightfinder-backend || true\",
-    \"docker run -d --name flightfinder-backend --restart unless-stopped -p 8080:8080 ajaydhadi95/flightfinder-backend:${PREVIOUSTAG}\",
-    \"docker ps --filter name=flightfinder-backend\",
-    \"docker logs --tail 50 flightfinder-backend\"
-  ]" \
+  --parameters 'commands=["docker ps","docker logs --tail 50 flightfinder-backend"]' \
   --region ap-south-1
-`
+```
 
-After rollback:
+The command returns a Command ID.
 
-Confirm that the SSM command returned Success.
-Check the Docker container state.
-Check Spring Boot startup logs.
-Call the application health endpoint.
-Record the failed and restored image tags.
+Then:
 
-Troubleshooting
-Git Reports Untracked Files
+```bash
+aws ssm get-command-invocation \
+  --command-id "COMMAND_ID" \
+  --instance-id "i-04e08bcedc0870665" \
+  --region ap-south-1
+```
 
-Symptom:
+This verifies:
 
-`text
-nothing added to commit but untracked files present
-`
+```text
+Docker container status
+Spring Boot startup
+Application logs
+Database connection errors
+Application errors
+```
 
-Resolution:
+---
 
-`bash
-git status
-git add .
-git commit -m "chore: add backend project files"
-git push origin main
-`
+# 28. Testing the Private Backend
 
-Duplicate bin/ Directory
+Private IP:
 
-Symptom: Generated classes and duplicate source files are tracked.
+```text
+10.0.11.171
+```
 
-Resolution:
+This is **not a public browser URL**.
 
-`bash
-git rm -r --cached bin
-printf "\nbin/\ntarget/\n.class\n" >> .gitignore
-git add .gitignore
-git commit -m "chore: remove generated build files"
-git push origin main
-`
+A resource with network connectivity to the private subnet can test it.
 
-AWS CLI Returns NoCredentials
+Example:
 
-Cause: Jenkins EC2 does not have a usable IAM instance profile.
+```bash
+curl http://10.0.11.171:8080
+```
 
-Checks:
+For a known API endpoint:
 
-`bash
-aws sts get-caller-identity
-curl -s http://169.254.169.254/latest/meta-data/iam/info
-`
+```bash
+curl http://10.0.11.171:8080/<API-ENDPOINT>
+```
 
-Resolution: Attach the intended IAM role to Jenkins EC2 and verify that its policy permits the required SSM actions.
+> Replace `<API-ENDPOINT>` with an actual endpoint from the application controller.
 
-SSM Permission Is Denied
+---
 
-Symptom: AccessDeniedException for actions such as ssm:SendCommand or ssm:DescribeInstanceInformation.
+# 29. Why SSM Instead of SSH?
 
-Resolution: Update the Jenkins instance role with the missing action and restrict the resource scope where AWS supports it.
+Traditional deployment:
 
-Backend Is Not Online in SSM
-
-Check the SSM Agent:
-
-`bash
-sudo systemctl status amazon-ssm-agent
-sudo systemctl restart amazon-ssm-agent
-`
-
-Also verify:
-
-• The backend instance has the correct IAM instance profile.
-• DNS resolution is enabled in the VPC.
-• The instance can reach SSM service endpoints.
-• Security groups and network ACLs allow outbound HTTPS.
-• The system clock is synchronized.
-
-Docker Is Missing
-
-Symptom:
-
-`text
-docker: not found
-`
-
-Install Docker using the package process appropriate for the backend instance's Linux distribution, then verify:
-
-`bash
-docker --version
-sudo systemctl enable --now docker
-systemctl is-active docker
-`
-
-Docker Permission Is Denied
-
-Check access as the Jenkins user:
-
-`bash
-sudo -u jenkins docker ps
-`
-
-If Jenkins needs group access:
-
-`bash
-sudo usermod -aG docker jenkins
-sudo systemctl restart jenkins
-`
-
-For an administrative Ubuntu user:
-
-`bash
-sudo usermod -aG docker ubuntu
-`
-
-A new login session is required after changing group membership.
-
-> [!WARNING]
-> Membership in the docker group provides privileges comparable to root access. Limit membership to trusted administrative and automation accounts.
-
-No Existing Container
-
-Message:
-
-`text
-No such container: flightfinder-backend
-`
-
-This is expected during the first deployment. The deployment handles it with:
-
-`bash
-docker stop flightfinder-backend || true
-docker rm flightfinder-backend || true
-`
-
-Container Starts and Immediately Exits
-
-Inspect its state and logs:
-
-`bash
-docker ps -a --filter name=flightfinder-backend
-docker inspect flightfinder-backend \
-  --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}'
-docker logs --tail 200 flightfinder-backend
-`
-
-Common causes include:
-
-• Missing database environment variables
-• Invalid RDS endpoint or credentials
-• RDS security group blocking port 3306
-• Incorrect application profile
-• Port conflicts
-• Unsupported JAR or Java configuration
-
-Image Pull Fails
-
-Test the image manually:
-
-`bash
-docker pull ajaydhadi95/flightfinder-backend:<IMAGE_TAG>
-`
-
-Check:
-
-• The requested tag exists.
-• The backend has outbound internet access.
-• Docker Hub is reachable.
-• Registry credentials are configured if the repository is private.
-
-Security Considerations
-
-The existing design avoids direct SSH deployment, but production deployments should also implement the following controls:
-
-• Use least-privilege IAM policies instead of unrestricted deployment permissions.
-• Keep the backend EC2 instance in a private subnet without a public IP.
-• Do not open inbound port 22 unless there is a documented operational requirement.
-• Allow backend port 8080 only from an ALB security group or trusted internal source.
-• Allow RDS port 3306 only from the backend security group.
-• Store database credentials in AWS Secrets Manager or SSM Parameter Store.
-• Encrypt RDS storage, snapshots, EBS volumes, and secrets with AWS KMS.
-• Enable CloudTrail, CloudWatch Logs, VPC Flow Logs, and SSM command logging.
-• Use Docker Hub access tokens rather than account passwords.
-• Deploy immutable build-number or digest references rather than relying on latest.
-• Add image vulnerability scanning and dependency scanning to the pipeline.
-• Rotate credentials and tokens according to organizational policy.
-• Do not commit passwords, tokens, .env files, or private keys.
-
-Production Improvements
-Application Load Balancer
-
-Expose the API through an internet-facing ALB while keeping backend instances private:
-
-`text
-Internet
+```text
+Jenkins
    |
+   | SSH + Private Key
    v
-Application Load Balancer
-   |
-   v
-Private Backend EC2
-   |
-   v
-Amazon RDS MySQL
-`
+Backend EC2
+```
 
-High Availability
+Our deployment:
 
-Run multiple backend instances across availability zones:
-
-`text
-                         ALB
-                          |
-                +---------+---------+
-                |                   |
-                v                   v
-        Backend EC2 AZ-1     Backend EC2 AZ-2
-                |                   |
-                +---------+---------+
-                          |
-                          v
-                    Amazon RDS
-`
-
-Recommended additions:
-
-• Auto Scaling Group for backend instances
-• ALB health checks
-• RDS Multi-AZ
-• HTTPS with AWS Certificate Manager
-• Route 53 DNS
-• AWS WAF
-• CloudWatch dashboards and alarms
-• Centralized application logs
-• Automated database backups
-• Blue-green or rolling deployment
-• Automated rollback on failed health checks
-• ECS, EKS, or AWS CodeDeploy for container orchestration and safer releases
-
-Operational Checklist
-Before Deployment
-• [ ] The main branch contains the approved changes.
-• [ ] Jenkins is active.
-• [ ] Docker is active on Jenkins and backend EC2.
-• [ ] The Jenkins user can access Docker.
-• [ ] Jenkins can call aws sts get-caller-identity.
-• [ ] Backend EC2 is online in Systems Manager.
-• [ ] Docker Hub credentials are valid.
-• [ ] Required application secrets are available.
-• [ ] RDS is available and its security group permits backend access.
-• [ ] A rollback image tag has been identified.
-
-After Deployment
-• [ ] Jenkins completed with SUCCESS.
-• [ ] SSM returned response code 0.
-• [ ] The expected build-number image is running.
-• [ ] The container restart policy is enabled.
-• [ ] Spring Boot started without errors.
-• [ ] The health endpoint reports UP.
-• [ ] Database connectivity is working.
-• [ ] Application logs contain no unexpected exceptions.
-• [ ] Deployment details were recorded.
-
-GIF Animation Setup
-
-Place the GIF at:
-
-`text
-docs/assets/flightfinder-cicd.gif
-`
-
-A useful animation sequence is:
-
-`text
-Developer Push
-      |
-      v
-GitHub main
-      |
-      v
-Jenkins Build and Test
-      |
-      v
-Docker Build
-      |
-      v
-Docker Hub
-      |
-      v
+```text
+Jenkins EC2
+    |
+    | IAM Role
+    v
 AWS Systems Manager
-      |
-      v
+    |
+    | SSM Agent
+    v
 Private Backend EC2
-      |
-      v
-Amazon RDS MySQL
-`
+```
 
-Recommended GIF settings:
+## Benefits
 
-| Property | Recommendation |
-|---|---|
-| Canvas | 1600 x 900 |
-| Aspect ratio | 16:9 |
-| Duration | 8-12 seconds |
-| Frame rate | 12-20 FPS |
-| Loop | Infinite |
-| File size | Below 10 MB where practical |
-| Theme | Dark AWS architecture style |
-| Text | Large and readable |
-| Sensitive information | Exclude credentials and database endpoints |
+* No SSH private key required for deployment.
+* Backend does not need a public IP.
+* No need to expose SSH to the internet.
+* IAM-based access.
+* Centralized command execution.
+* Suitable for automated deployments.
+* Better separation between public and private layers.
 
-Commit the runbook and animation:
+---
 
-`bash
-mkdir -p docs/assets
+# 30. Troubleshooting Performed
 
-git add RUNBOOK.md docs/assets/flightfinder-cicd.gif
-git commit -m "docs: add professional CI/CD deployment runbook"
-git push origin main
-``
+## Issue 1 – Git untracked files
 
-<p align="center">
-  <strong>FlightFinder Backend CI/CD</strong><br>
-  GitHub to Jenkins to Docker Hub to AWS SSM to private EC2 to Amazon RDS
-</p>
+Problem:
+
+```text
+nothing added to commit but untracked files present
+```
+
+Solution:
+
+```bash
+git add .
+git commit -m "Initial backend project setup"
+```
+
+---
+
+## Issue 2 – Duplicate `bin/` directory
+
+Problem:
+
+```text
+bin/
+*.class
+```
+
+were present.
+
+Solution:
+
+```bash
+git rm -r --cached bin
+```
+
+`.gitignore`:
+
+```gitignore
+bin/
+target/
+*.class
+```
+
+---
+
+## Issue 3 – Jenkins AWS credentials
+
+Problem:
+
+```text
+NoCredentials
+```
+
+Solution:
+
+Attach:
+
+```text
+jenkins-ec2-role
+```
+
+to Jenkins EC2.
+
+Verify:
+
+```bash
+aws sts get-caller-identity
+```
+
+---
+
+## Issue 4 – SSM permission
+
+Problem:
+
+Jenkins initially lacked all required SSM permissions.
+
+One missing permission was:
+
+```text
+ssm:DescribeInstanceInformation
+```
+
+It was added to the Jenkins IAM role.
+
+---
+
+## Issue 5 – Docker missing on backend
+
+Problem:
+
+```text
+docker: not found
+```
+
+Solution:
+
+Install Docker on backend EC2.
+
+Verify:
+
+```bash
+docker --version
+systemctl is-active docker
+```
+
+---
+
+## Issue 6 – Ubuntu Docker permission
+
+Problem:
+
+Running:
+
+```bash
+docker ps
+```
+
+as the Ubuntu user on Jenkins EC2 produced a Docker socket permission error.
+
+Important:
+
+This did not affect Jenkins because the Jenkins service already had Docker permission.
+
+Optional fix:
+
+```bash
+sudo usermod -aG docker ubuntu
+```
+
+Then log out and log in again.
+
+---
+
+# 31. How to Explain This Project in an Interview
+
+### Short Interview Answer
+
+> I implemented a production-style three-tier
