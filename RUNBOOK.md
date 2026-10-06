@@ -1142,8 +1142,3 @@ Then log out and log in again.
 
 ---
 
-# 31. How to Explain This Project in an Interview
-
-### Short Interview Answer
-
-> I implemented a production-style three-tier
