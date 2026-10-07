@@ -6,7 +6,7 @@ pipeline {
         IMAGE_NAME = 'ajaydhadi95/flightfinder-backend'
         IMAGE_TAG  = "${BUILD_NUMBER}"
 
-        BACKEND_INSTANCE_ID = 'i-04e08bcedc0870665'
+        BACKEND_INSTANCE_ID = 'i-03b37f268f34ea125'
         AWS_REGION = 'ap-south-1'
 
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
