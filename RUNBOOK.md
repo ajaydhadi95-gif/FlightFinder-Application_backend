@@ -24,7 +24,8 @@ The project separates the application into three layers:
 2. **Application Layer:** Backend API.
 3. **Data Layer:** AWS RDS MySQL database.
 
-![AWS Architecture and CI/CD Runbook](docs/images/AWS_Architecture_and_CI_CD_Runbook.png)
+<img width="1536" height="1024" alt="7f820b7d-5e5a-4c2e-931e-15fe2f29a407" src="https://github.com/user-attachments/assets/31e5d9fd-0b32-4bf8-b571-ea60a3b63074" />
+
 
 ## 1.1 Architecture
 
