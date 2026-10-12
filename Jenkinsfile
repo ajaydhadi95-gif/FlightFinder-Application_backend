@@ -1,14 +1,15 @@
+```groovy
 pipeline {
-
     agent any
 
     environment {
-        IMAGE_NAME = 'ajaydhadi95/flightfinder-backend'
-        IMAGE_TAG  = "${BUILD_NUMBER}"
+        AWS_REGION       = 'ap-south-1'
+        EKS_CLUSTER_NAME = 'devops-eks'
+        K8S_NAMESPACE    = 'default'
+        DEPLOYMENT_NAME  = 'backend'
+        CONTAINER_NAME   = 'backend'
 
-        BACKEND_INSTANCE_ID = 'i-03b37f268f34ea125'
-        AWS_REGION = 'ap-south-1'
-
+        DOCKER_IMAGE     = 'ajaydhadi95/booking_backend'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
     }
 
@@ -16,8 +17,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/ajaydhadi95-gif/FlightFinder-Application_backend.git'
+                checkout scm
             }
         }
 
@@ -32,9 +32,7 @@ pipeline {
 
         stage('Package JAR') {
             steps {
-                sh '''
-                    ./mvnw clean package -DskipTests
-                '''
+                sh './mvnw clean package -DskipTests'
             }
         }
 
@@ -42,14 +40,13 @@ pipeline {
             steps {
                 sh '''
                     docker build \
-                      -t ${IMAGE_NAME}:${IMAGE_TAG} \
-                      -t ${IMAGE_NAME}:latest \
-                      .
+                      -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                      -t ${DOCKER_IMAGE}:latest .
                 '''
             }
         }
 
-        stage('Docker Login & Push') {
+        stage('Docker Hub Login & Push') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -59,62 +56,85 @@ pipeline {
                     )
                 ]) {
                     sh '''
-                        echo "$DOCKER_PASSWORD" | docker login \
-                            -u "$DOCKER_USER" \
-                            --password-stdin
+                        set -eu
 
-                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                        docker push ${IMAGE_NAME}:latest
+                        echo "$DOCKER_PASSWORD" | docker login \
+                          -u "$DOCKER_USER" \
+                          --password-stdin
+
+                        docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                        docker push ${DOCKER_IMAGE}:latest
+
+                        docker logout
                     '''
                 }
             }
         }
 
-        stage('Deploy to Backend via SSM') {
+        stage('Connect to EKS') {
             steps {
-                script {
+                sh '''
+                    set -eu
 
-                    def commandId = sh(
-                        script: """
-                            aws ssm send-command \
-                              --instance-ids "${BACKEND_INSTANCE_ID}" \
-                              --document-name "AWS-RunShellScript" \
-                              --parameters 'commands=[
-                                "docker pull ${IMAGE_NAME}:${IMAGE_TAG}",
-                                "docker stop flightfinder-backend || true",
-                                "docker rm flightfinder-backend || true",
-                                "docker run -d --name flightfinder-backend --restart unless-stopped -p 8080:8080 ${IMAGE_NAME}:${IMAGE_TAG}"
-                              ]' \
-                              --region ${AWS_REGION} \
-                              --query 'Command.CommandId' \
-                              --output text
-                        """,
-                        returnStdout: true
-                    ).trim()
+                    aws eks update-kubeconfig \
+                      --region "$AWS_REGION" \
+                      --name "$EKS_CLUSTER_NAME"
 
-                    echo "SSM Command ID: ${commandId}"
+                    kubectl get nodes
+                    kubectl get secret backend-db-secret \
+                      -n "$K8S_NAMESPACE"
+                '''
+            }
+        }
 
-                    sleep 10
+        stage('Deploy Backend to EKS') {
+            steps {
+                sh '''
+                    set -eu
 
-                    sh """
-                        aws ssm get-command-invocation \
-                          --command-id "${commandId}" \
-                          --instance-id "${BACKEND_INSTANCE_ID}" \
-                          --region "${AWS_REGION}"
-                    """
-                }
+                    kubectl apply -f k8s/backend-deployment.yaml
+
+                    kubectl set image \
+                      deployment/${DEPLOYMENT_NAME} \
+                      ${CONTAINER_NAME}=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                      -n ${K8S_NAMESPACE}
+
+                    kubectl rollout status \
+                      deployment/${DEPLOYMENT_NAME} \
+                      -n ${K8S_NAMESPACE} \
+                      --timeout=300s
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    echo "===== Backend Deployment ====="
+                    kubectl get deployment backend -n default
+
+                    echo "===== Backend Pods ====="
+                    kubectl get pods -l app=backend -n default
+
+                    echo "===== Backend Service ====="
+                    kubectl get svc backend-service -n default
+                '''
             }
         }
     }
 
     post {
-
         success {
-            echo 'Backend deployment successful!'
+            echo 'SUCCESS: Backend deployed to AWS EKS!'
         }
 
         failure {
-            echo 'Backend deployment failed!'
+            echo 'FAILED: Check the Jenkins stage logs.'
+        }
+
+        always {
+            echo 'Backend CI/CD pipeline finished.'
         }
     }
 }
+```
