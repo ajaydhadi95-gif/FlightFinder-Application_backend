@@ -124,15 +124,14 @@ pipeline {
 
     post {
         success {
-            echo 'SUCCESS: Backend deployed to AWS EKS!'
+            echo "Deployment Successful!"
+            cleanWs()
+            sh 'docker image prune -f'
         }
 
         failure {
-            echo 'FAILED: Check the Jenkins stage logs.'
-        }
-
-        always {
-            echo 'Backend CI/CD pipeline finished.'
+            echo "Deployment Failed!"
+            cleanWs()
         }
     }
 }
