@@ -1026,5 +1026,6 @@ The project should be considered successfully deployed only after verifying all 
 10. No unexpected destructive Terraform changes remain.
 
 ---
+<img width="1538" height="1659" alt="image" src="https://github.com/user-attachments/assets/ac543ce0-a357-460d-a37f-c18664d2f597" />
 
 
