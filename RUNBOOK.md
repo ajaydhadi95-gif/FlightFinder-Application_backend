@@ -383,60 +383,237 @@ aws eks describe-cluster `
 
 ---
 
-7.1 Docker Hub login
-docker login
+# Runbook 07: Docker Hub Image Management and EKS Deployment
 
-
-Apna Docker Hub username aur password/access token use karo.
-7.2 Frontend image build aur push
-docker build -t YOUR_DOCKERHUB_USERNAME/booking-frontend:latest ./frontend
-
-
-docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
-
-
-7.3 Backend image build aur push
-docker build -t YOUR_DOCKERHUB_USERNAME/booking-backend:latest ./backend
-
-
-docker push YOUR_DOCKERHUB_USERNAME/booking-backend:latest
-
-
-YOUR_DOCKERHUB_USERNAME ki jagah apna actual Docker Hub username daalna. ./frontend aur ./backend paths ko apne project ke actual folders ke hisaab se use karna.
-7.4 Kubernetes YAML mein images
-Frontend Deployment:
-image: YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
-
-
-Backend Deployment:
-image: YOUR_DOCKERHUB_USERNAME/booking-backend:latest
-## 7.3 Build and Push Images
-
-Example for the frontend:
-
-```bash
-docker build -t booking-frontend:latest ./frontend
-```
-
-Tag the image:
-
-```bash
-docker tag booking-frontend:latest \
-  <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/booking-frontend:latest
-```
-
-Push:
-
-```bash
-docker push \
-  <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/booking-frontend:latest
-```
-
-Repeat for the backend, using its actual build context and Dockerfile.
-
-**Production recommendation:** Prefer immutable image tags based on the Git commit or build number instead of relying exclusively on `latest`.
+**Project:** Three-Tier Application on AWS  
+**Container Registry:** Docker Hub  
+**Container Orchestration:** Amazon EKS  
+**CI/CD Tool:** Jenkins  
+**Infrastructure as Code:** Terraform  
+**Region:** ap-south-1
 
 ---
+
+## 1. Objective
+
+This runbook describes how to build, tag, and push frontend and backend Docker images to Docker Hub and use those images in Kubernetes Deployments running on Amazon EKS.
+
+## 2. Deployment Workflow
+
+GitHub → Jenkins on EC2 → Docker Build → Docker Hub → Amazon EKS → Kubernetes Pods
+
+## 3. Prerequisites
+
+Before starting, verify that the following tools are installed and configured:
+
+- Docker
+- AWS CLI
+- kubectl
+- Jenkins
+- Terraform
+- Access to the application GitHub repository
+- Docker Hub account
+- An existing EKS cluster with working Kubernetes access
+
+Verify Docker:
+
+```powershell
+docker --version
+docker info
+```
+
+Verify AWS identity:
+
+```powershell
+aws sts get-caller-identity
+```
+
+Verify Kubernetes connectivity:
+
+```powershell
+kubectl get nodes
+```
+
+**Expected result:** Docker is operational, AWS identity is displayed, and EKS nodes are accessible.
+
+## 4. Docker Hub Authentication
+
+### Step 4.1 — Log in
+
+```powershell
+docker login
+```
+
+Authenticate using your Docker Hub username and password or access token.
+
+### Step 4.2 — Verify authentication
+
+```powershell
+docker info
+```
+
+Check the output for the Docker Hub username.
+
+## 5. Build and Push the Frontend Image
+
+Run these commands from the project root directory, assuming the frontend Dockerfile is located in `./frontend`.
+
+### Step 5.1 — Build the image
+
+```powershell
+docker build -t YOUR_DOCKERHUB_USERNAME/booking-frontend:latest ./frontend
+```
+
+### Step 5.2 — Verify the image
+
+```powershell
+docker images
+```
+
+### Step 5.3 — Push the image
+
+```powershell
+docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
+```
+
+**Validation:** Open Docker Hub and verify that the `booking-frontend` repository contains the pushed image.
+
+## 6. Build and Push the Backend Image
+
+Assumption: The backend Dockerfile is located in `./backend`. Adjust the path if your repository uses a different structure.
+
+### Step 6.1 — Build the image
+
+```powershell
+docker build -t YOUR_DOCKERHUB_USERNAME/booking-backend:latest ./backend
+```
+
+### Step 6.2 — Push the image
+
+```powershell
+docker push YOUR_DOCKERHUB_USERNAME/booking-backend:latest
+```
+
+### Step 6.3 — Validate
+
+Verify that the `booking-backend` repository and its image tag are available in Docker Hub.
+
+Replace `YOUR_DOCKERHUB_USERNAME` with your actual username in every command.
+
+## 7. Configure Kubernetes Deployments
+
+Update the image field in the frontend Deployment YAML:
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          image: YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
+          ports:
+            - containerPort: 80
+```
+
+Update the image field in the backend Deployment YAML:
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          image: YOUR_DOCKERHUB_USERNAME/booking-backend:latest
+          ports:
+            - containerPort: 8080
+```
+
+The container ports above are examples. Use the actual ports configured in your application and Dockerfiles.
+
+## 8. Deploy to Amazon EKS
+
+Assuming the Kubernetes manifests are stored in a `k8s` directory:
+
+### Step 8.1 — Verify cluster access
+
+```powershell
+kubectl get nodes
+kubectl get namespaces
+```
+
+### Step 8.2 — Apply the Kubernetes manifests
+
+```powershell
+kubectl apply -f ./k8s/
+```
+
+### Step 8.3 — Monitor Deployments
+
+```powershell
+kubectl get deployments -A
+kubectl get pods -A
+kubectl get services -A
+```
+
+### Step 8.4 — Check rollout status
+
+Use the actual namespace and Deployment names:
+
+```powershell
+kubectl rollout status deployment/booking-frontend -n default
+kubectl rollout status deployment/booking-backend -n default
+```
+
+**Expected result:** The Deployments report successful rollout, and their Pods reach the `Running` state.
+
+## 9. Troubleshooting
+
+| Problem | Diagnostic command | Action |
+|---|---|---|
+| Docker login fails | `docker login` | Check credentials or access token. |
+| Image push is denied | `docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest` | Verify repository name and permissions. |
+| Pod reports `ImagePullBackOff` | `kubectl describe pod POD_NAME -n NAMESPACE` | Verify image path, tag, registry access, and pull secrets if required. |
+| Pod reports `CrashLoopBackOff` | `kubectl logs POD_NAME -n NAMESPACE` | Inspect application logs and container configuration. |
+| Deployment rollout fails | `kubectl describe deployment DEPLOYMENT_NAME -n NAMESPACE` | Inspect events, image settings, probes, and resource limits. |
+| EKS connection fails | `kubectl get nodes` | Check AWS credentials, kubeconfig, and EKS access permissions. |
+
+
+
+## 10. Rollback Procedure
+
+If a new Deployment fails, identify the affected Deployment and review its rollout history:
+
+```powershell
+kubectl rollout history deployment/booking-frontend -n default
+```
+
+Roll back to the previous revision if appropriate:
+
+```powershell
+kubectl rollout undo deployment/booking-frontend -n default
+```
+
+Verify the rollback:
+
+```powershell
+kubectl rollout status deployment/booking-frontend -n default
+kubectl get pods -n default
+```
+
+Repeat for the backend only if necessary.
+
+## 11. Completion Checklist
+
+- [ ] Docker Hub authentication successful
+- [ ] Frontend image built and pushed
+- [ ] Backend image built and pushed
+- [ ] Kubernetes manifests reference the correct images
+- [ ] EKS cluster connectivity verified
+- [ ] Kubernetes manifests applied successfully
+- [ ] Frontend and backend Deployments healthy
+- [ ] Application connectivity tested
+- [ ] Logs and rollout status reviewed
+
 
 # 8. Kubernetes Application Deployment
 
