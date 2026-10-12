@@ -1005,7 +1005,6 @@ Set alerts for meaningful conditions, such as high CPU, low database storage, re
 - [ ] Backend can connect to RDS.
 - [ ] `bookingdb` and `bookings` are accessible.
 - [ ] Security groups follow least-privilege rules.
-- [ ] CloudWatch monitoring and alarms are configured.
 - [ ] RDS backups are available.
 - [ ] No unexpected Terraform changes are pending.
 
@@ -1028,8 +1027,4 @@ The project should be considered successfully deployed only after verifying all 
 
 ---
 
-# 17. Interview Explanation
 
-“I built a three-tier application deployment architecture on AWS using Terraform, Jenkins, Docker, Amazon EKS, ECR and Amazon RDS MySQL. Terraform manages the infrastructure through reusable modules for networking, security groups, IAM, EC2, EKS and RDS. Jenkins automates the application build and deployment process, Docker packages the services, EKS orchestrates the containers, and RDS stores application data. I also worked on Terraform state reconciliation, security-group troubleshooting, database verification and operational runbook documentation.”
-
-**Documentation note:** This runbook describes the intended architecture and the configuration and troubleshooting work completed so far. Mark each deployment, monitoring and recovery item complete only after verifying it in the actual AWS environment.
