@@ -24,7 +24,7 @@ The project separates the application into three layers:
 2. **Application Layer:** Backend API.
 3. **Data Layer:** AWS RDS MySQL database.
 
-Terraform provisions AWS infrastructure, Jenkins automates the CI/CD pipeline, Docker packages the application, and EKS manages the application containers.
+![AWS Architecture and CI/CD Runbook](docs/images/AWS_Architecture_and_CI_CD_Runbook.png)
 
 ## 1.1 Architecture
 
