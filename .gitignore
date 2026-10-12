@@ -35,3 +35,5 @@ build/
 target/
 bin/
 *.class
+
+k8s/backend-db-secret.yaml
