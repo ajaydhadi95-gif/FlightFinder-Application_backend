@@ -29,17 +29,35 @@ The project separates the application into three layers:
 
 ## 1.1 Architecture
 
-<img width="1536" height="1024" alt="a0459cbb-6511-446d-bc3f-b6523619bd42" src="https://github.com/user-attachments/assets/2838beff-1ccf-47bc-86f4-1294f9d89be5" />
+<img width="1536" height="1024" alt="257583ad-51ad-4998-b8a1-54c1caaaf051" src="https://github.com/user-attachments/assets/d79accf4-45fb-4c5e-8fcc-a81067fae6fc" />
+
 
 
 **Important architecture notes:**
 
-- EKS worker nodes should run in private subnets.
-- The public application entry point should be a properly configured load balancer or ingress.
-- The backend should access RDS privately.
-- Jenkins runs on a separate EC2 instance in the current design.
-- Terraform provisions infrastructure; Kubernetes manifests deploy the application.
-- The exact load-balancer and ingress configuration must be verified in the AWS environment.
+## ⚠️ Important Architecture Notes
+
+### 🔐 Security
+- **The frontend must NOT access the database directly.** Only the backend should talk to RDS.
+- **Always keep RDS in a private subnet** with public access disabled.
+- In the RDS security group, allow **port 3306 only from the backend security group**.
+- Never store secrets (DB username/password) in code. Use Kubernetes Secrets or AWS Secrets Manager.
+
+### 🌐 Networking
+- Internet traffic flows only through **Internet Gateway → Public Load Balancer → Frontend Pods**.
+- Frontend-to-backend communication uses **internal Kubernetes Services**.
+- VPC CIDR is `10.0.0.0/16`, with private subnets for the backend and database.
+
+### 🚀 CI/CD
+- Pipeline: **Developer → GitHub → Jenkins (EC2) → Docker Build → Docker Hub → EKS Deployment**.
+- Frontend and backend images are built separately and stored in **Docker Hub**.
+- Use a unique image tag per build (for example, the build number) instead of relying on `latest`.
+- Keep Jenkins credentials (Docker Hub, kubeconfig) in the Jenkins Credentials Store.
+
+### ☸️ Kubernetes
+- Create separate **Deployments** and **Services** for the frontend and backend.
+- Set resource `requests/limits` and health checks (`readinessProbe`, `livenessProbe`) for pods.
+- Use a **Horizontal Pod Autoscaler (HPA)** to handle higher traffic.
 
 ---
 
