@@ -24,104 +24,13 @@ The project separates the application into three layers:
 2. **Application Layer:** Backend API.
 3. **Data Layer:** AWS RDS MySQL database.
 
-<img width="1536" height="1024" alt="7f820b7d-5e5a-4c2e-931e-15fe2f29a407" src="https://github.com/user-attachments/assets/31e5d9fd-0b32-4bf8-b571-ea60a3b63074" />
+
 
 
 ## 1.1 Architecture
 
-                         USERS
-                           |
-                           v
-                    Internet Gateway
-                           |
-                           v
-                    Public Load Balancer
-                           |
-                           v
-                  Amazon EKS Cluster
-                 /                   \
-                v                     v
-          Frontend Pods          Backend Pods
-                |                     |
-                |                     v
-                |              RDS MySQL:3306
-                |                     |
-                +---------------------+
-                                      |
-                                      v
-                              bookingdb Database
-                                  bookings Table
+<img width="1536" height="1024" alt="a0459cbb-6511-446d-bc3f-b6523619bd42" src="https://github.com/user-attachments/assets/2838beff-1ccf-47bc-86f4-1294f9d89be5" />
 
-
-CI/CD PIPELINE
-
-Developer
-    |
-    v
-GitHub Repository
-    |
-    v
-Jenkins on EC2
-    |
-    v
-Docker Build
-    |
-    v
-Amazon ECR
-    |
-    v
-Amazon EKS Deployment
-    |
-    v
-Application Running
-
-```text
-                         USERS
-                           |
-                           v
-                    Internet Gateway
-                           |
-                           v
-                    Public Load Balancer
-                           |
-                           v
-                  Amazon EKS Cluster
-                 /                   \
-                v                     v
-          Frontend Pods          Backend Pods
-                |                     |
-                |                     v
-                |              RDS MySQL:3306
-                |                     |
-                +---------------------+
-                                      |
-                                      v
-                              bookingdb Database
-                                  bookings Table
-
-
-CI/CD PIPELINE
-
-Developer
-    |
-    v
-GitHub Repository
-    |
-    v
-Jenkins on EC2
-    |
-    v
-Docker Build
-    |
-    v
-Amazon ECR
-    |
-    v
-Amazon EKS Deployment
-    |
-    v
-Application Running
-```
 
 **Important architecture notes:**
 
