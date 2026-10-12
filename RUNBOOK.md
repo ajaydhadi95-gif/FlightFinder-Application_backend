@@ -383,39 +383,33 @@ aws eks describe-cluster `
 
 ---
 
-# 7. Amazon ECR Setup
+7.1 Docker Hub login
+docker login
 
-ECR stores the Docker images that EKS workloads use.
 
-## 7.1 Authenticate Docker to ECR
+Apna Docker Hub username aur password/access token use karo.
+7.2 Frontend image build aur push
+docker build -t YOUR_DOCKERHUB_USERNAME/booking-frontend:latest ./frontend
 
-Replace the account ID and repository name with the actual values from your environment.
 
-```bash
-aws ecr get-login-password --region ap-south-1 \
-  | docker login \
-    --username AWS \
-    --password-stdin <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com
-```
+docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
 
-## 7.2 Create a Repository if Needed
 
-```bash
-aws ecr create-repository \
-  --repository-name booking-frontend \
-  --region ap-south-1
-```
+7.3 Backend image build aur push
+docker build -t YOUR_DOCKERHUB_USERNAME/booking-backend:latest ./backend
 
-For a separate backend image:
 
-```bash
-aws ecr create-repository \
-  --repository-name booking-backend \
-  --region ap-south-1
-```
+docker push YOUR_DOCKERHUB_USERNAME/booking-backend:latest
 
-If the repositories already exist, verify them instead of attempting to create them again.
 
+YOUR_DOCKERHUB_USERNAME ki jagah apna actual Docker Hub username daalna. ./frontend aur ./backend paths ko apne project ke actual folders ke hisaab se use karna.
+7.4 Kubernetes YAML mein images
+Frontend Deployment:
+image: YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
+
+
+Backend Deployment:
+image: YOUR_DOCKERHUB_USERNAME/booking-backend:latest
 ## 7.3 Build and Push Images
 
 Example for the frontend:
