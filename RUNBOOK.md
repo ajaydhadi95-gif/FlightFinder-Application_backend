@@ -393,15 +393,15 @@ kubectl cluster-info
 
 ---
 
-## 1. Objective
+## 7. Objective
 
 This runbook describes how to build, tag, and push frontend and backend Docker images to Docker Hub and use those images in Kubernetes Deployments running on Amazon EKS.
 
-## 2. Deployment Workflow
+## 7.1. Deployment Workflow
 
 GitHub → Jenkins on EC2 → Docker Build → Docker Hub → Amazon EKS → Kubernetes Pods
 
-## 3. Prerequisites
+## 7.2. Prerequisites
 
 Before starting, verify that the following tools are installed and configured:
 
@@ -435,9 +435,9 @@ kubectl get nodes
 
 **Expected result:** Docker is operational, AWS identity is displayed, and EKS nodes are accessible.
 
-## 4. Docker Hub Authentication
+## 8. Docker Hub Authentication
 
-### Step 4.1 — Log in
+### Step 8.1 — Log in
 
 ```powershell
 docker login
@@ -445,7 +445,7 @@ docker login
 
 Authenticate using your Docker Hub username and password or access token.
 
-### Step 4.2 — Verify authentication
+### Step 8.2 — Verify authentication
 
 ```powershell
 docker info
@@ -453,23 +453,23 @@ docker info
 
 Check the output for the Docker Hub username.
 
-## 5. Build and Push the Frontend Image
+## 9. Build and Push the Frontend Image
 
 Run these commands from the project root directory, assuming the frontend Dockerfile is located in `./frontend`.
 
-### Step 5.1 — Build the image
+### Step 9.1 — Build the image
 
 ```powershell
 docker build -t YOUR_DOCKERHUB_USERNAME/booking-frontend:latest ./frontend
 ```
 
-### Step 5.2 — Verify the image
+### Step 9.2 — Verify the image
 
 ```powershell
 docker images
 ```
 
-### Step 5.3 — Push the image
+### Step 9.3 — Push the image
 
 ```powershell
 docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
@@ -477,29 +477,29 @@ docker push YOUR_DOCKERHUB_USERNAME/booking-frontend:latest
 
 **Validation:** Open Docker Hub and verify that the `booking-frontend` repository contains the pushed image.
 
-## 6. Build and Push the Backend Image
+## 10. Build and Push the Backend Image
 
 Assumption: The backend Dockerfile is located in `./backend`. Adjust the path if your repository uses a different structure.
 
-### Step 6.1 — Build the image
+### Step 10.1 — Build the image
 
 ```powershell
 docker build -t YOUR_DOCKERHUB_USERNAME/booking-backend:latest ./backend
 ```
 
-### Step 6.2 — Push the image
+### Step 10.2 — Push the image
 
 ```powershell
 docker push YOUR_DOCKERHUB_USERNAME/booking-backend:latest
 ```
 
-### Step 6.3 — Validate
+### Step 10.3 — Validate
 
 Verify that the `booking-backend` repository and its image tag are available in Docker Hub.
 
 Replace `YOUR_DOCKERHUB_USERNAME` with your actual username in every command.
 
-## 7. Configure Kubernetes Deployments
+## 11. Configure Kubernetes Deployments
 
 Update the image field in the frontend Deployment YAML:
 
@@ -529,24 +529,24 @@ spec:
 
 The container ports above are examples. Use the actual ports configured in your application and Dockerfiles.
 
-## 8. Deploy to Amazon EKS
+## 12. Deploy to Amazon EKS
 
 Assuming the Kubernetes manifests are stored in a `k8s` directory:
 
-### Step 8.1 — Verify cluster access
+### Step 12.1 — Verify cluster access
 
 ```powershell
 kubectl get nodes
 kubectl get namespaces
 ```
 
-### Step 8.2 — Apply the Kubernetes manifests
+### Step 12.2 — Apply the Kubernetes manifests
 
 ```powershell
 kubectl apply -f ./k8s/
 ```
 
-### Step 8.3 — Monitor Deployments
+### Step 12.3 — Monitor Deployments
 
 ```powershell
 kubectl get deployments -A
@@ -554,7 +554,7 @@ kubectl get pods -A
 kubectl get services -A
 ```
 
-### Step 8.4 — Check rollout status
+### Step 12.4 — Check rollout status
 
 Use the actual namespace and Deployment names:
 
@@ -565,7 +565,7 @@ kubectl rollout status deployment/booking-backend -n default
 
 **Expected result:** The Deployments report successful rollout, and their Pods reach the `Running` state.
 
-## 9. Troubleshooting
+## 13. Troubleshooting
 
 | Problem | Diagnostic command | Action |
 |---|---|---|
@@ -578,7 +578,7 @@ kubectl rollout status deployment/booking-backend -n default
 
 
 
-## 10. Rollback Procedure
+## 14. Rollback Procedure
 
 If a new Deployment fails, identify the affected Deployment and review its rollout history:
 
@@ -601,7 +601,7 @@ kubectl get pods -n default
 
 Repeat for the backend only if necessary.
 
-## 11. Completion Checklist
+## 15. Completion Checklist
 
 - [ ] Docker Hub authentication successful
 - [ ] Frontend image built and pushed
@@ -614,9 +614,9 @@ Repeat for the backend only if necessary.
 - [ ] Logs and rollout status reviewed
 
 
-# 8. Kubernetes Application Deployment
+# 16. Kubernetes Application Deployment
 
-## 8.1 Recommended Kubernetes Directory
+## 16.1 Recommended Kubernetes Directory
 
 ```text
 k8s/
@@ -633,7 +633,7 @@ k8s/
 
 RDS is managed separately by AWS, so a Kubernetes database deployment is not required when using RDS.
 
-## 8.2 Create Namespace
+## 16.2 Create Namespace
 
 ```bash
 kubectl create namespace booking-app
@@ -641,7 +641,7 @@ kubectl create namespace booking-app
 
 If it already exists, verify it rather than recreating it.
 
-## 8.3 Deploy Application Manifests
+## 16.3 Deploy Application Manifests
 
 After updating the manifests with valid image URIs and application configuration:
 
@@ -658,7 +658,7 @@ kubectl get services -n booking-app
 kubectl get ingress -n booking-app
 ```
 
-## 8.4 Verify Pod Health
+## 16.4 Verify Pod Health
 
 ```bash
 kubectl describe pods -n booking-app
@@ -669,7 +669,7 @@ Replace placeholders with the actual deployment names.
 
 For a multi-container pod, specify the container name when required.
 
-## 8.5 Deployment Rollout
+## 16.5 Deployment Rollout
 
 ```bash
 kubectl rollout status deployment/<DEPLOYMENT_NAME> -n booking-app
@@ -685,9 +685,9 @@ If a rollout fails, inspect the events and logs before deciding whether to roll 
 
 ---
 
-# 9. Amazon RDS MySQL
+# 17. Amazon RDS MySQL
 
-## 9.1 Current Database Details
+## 17.1 Current Database Details
 
 | Item | Verified information |
 |---|---|
@@ -699,7 +699,7 @@ If a rollout fails, inspect the events and logs before deciding whether to roll 
 
 The RDS endpoint and username should be obtained from your actual configuration. Do not put passwords in documentation or source control.
 
-## 9.2 Connect to RDS
+## 17.2 Connect to RDS
 
 ```bash
 mysql -h <RDS_ENDPOINT> -P 3306 -u <DB_USERNAME> -p
@@ -707,7 +707,7 @@ mysql -h <RDS_ENDPOINT> -P 3306 -u <DB_USERNAME> -p
 
 Enter the password at the prompt.
 
-## 9.3 Verify Database
+## 17.3 Verify Database
 
 ```sql
 SHOW DATABASES;
@@ -725,7 +725,7 @@ SELECT * FROM bookings LIMIT 10;
 
 The correct table name is `bookings`. The name `actual_table_name` was only a placeholder and is not an existing table in this database.
 
-## 9.4 Application Database Configuration
+## 17.4 Application Database Configuration
 
 Configure the backend with the following settings using environment variables or a secure secret-management solution:
 
@@ -741,7 +741,7 @@ These are configuration keys, not actual credentials.
 
 Do not bake credentials into Docker images or commit them to GitHub.
 
-## 9.5 Database Security
+## 17.5 Database Security
 
 - Keep RDS in private database subnets.
 - Permit TCP `3306` only from the required backend security group.
@@ -751,7 +751,7 @@ Do not bake credentials into Docker images or commit them to GitHub.
 
 ---
 
-# 10. Security Group Configuration
+# 18. Security Group Configuration
 
 The project contains separate security groups for Jenkins, EKS and RDS.
 
@@ -762,7 +762,7 @@ The project contains separate security groups for Jenkins, EKS and RDS.
 | EKS node SG | Worker node and application traffic |
 | RDS SG | Database access |
 
-## 10.1 MySQL Rule
+## 18.1 MySQL Rule
 
 The intended rule is:
 
@@ -775,7 +775,7 @@ Source: Approved backend/EKS node security group
 
 The exact source should match the network design and actual traffic path. Do not open the database to all IP addresses.
 
-## 10.2 Previously Investigated Rule
+## 18.2 Previously Investigated Rule
 
 The existing rule ID was:
 
@@ -797,7 +797,7 @@ A separate EKS-to-RDS rule was planned.
 
 ---
 
-# 11. Jenkins CI/CD Pipeline
+# 19. Jenkins CI/CD Pipeline
 
 The intended pipeline is:
 
@@ -826,7 +826,7 @@ Deploy to EKS
 Verify Rollout
 ```
 
-## 11.1 Pipeline Stages
+## 19.1 Pipeline Stages
 
 1. Checkout the source repository.
 2. Install or verify required build tools.
@@ -841,7 +841,7 @@ Verify Rollout
 
 The actual stages depend on the application language, repository structure and Jenkinsfile.
 
-## 11.2 Jenkins Credentials
+## 19.2 Jenkins Credentials
 
 Store required secrets in Jenkins Credentials or an approved secrets manager.
 
@@ -849,7 +849,7 @@ Use least-privilege IAM permissions for ECR and EKS access.
 
 Do not store AWS access keys or database passwords directly in the Jenkinsfile.
 
-## 11.3 Jenkins Pipeline Failure
+## 19.3 Jenkins Pipeline Failure
 
 If a pipeline fails:
 
@@ -873,9 +873,9 @@ Run the commands on the machine where the corresponding tools and credentials ar
 
 ---
 
-# 12. Troubleshooting Runbook
+# 20. Troubleshooting Runbook
 
-## 12.1 Jenkins Build Is Waiting for an Executor
+## 20.1 Jenkins Build Is Waiting for an Executor
 
 **Symptoms:**
 
@@ -892,7 +892,7 @@ Waiting for next available executor
 4. Review Jenkins system logs.
 5. Re-run the job after correcting the cause.
 
-## 12.2 EKS Cluster Is Not Reachable
+## 20.2 EKS Cluster Is Not Reachable
 
 **Actions:**
 
@@ -902,7 +902,7 @@ Waiting for next available executor
 4. Check endpoint accessibility and EKS access permissions.
 5. Verify worker node status.
 
-## 12.3 Kubernetes Pods Are Not Starting
+## 20.3 Kubernetes Pods Are Not Starting
 
 ```bash
 kubectl get pods -A
@@ -920,7 +920,7 @@ Investigate common causes:
 - Insufficient CPU or memory.
 - Application startup failures.
 
-## 12.4 Backend Cannot Connect to RDS
+## 20.4 Backend Cannot Connect to RDS
 
 Check the following:
 
@@ -933,7 +933,7 @@ Check the following:
 
 Do not make RDS public simply to bypass a connectivity problem.
 
-## 12.5 Terraform Reports Unexpected Changes
+## 20.5 Terraform Reports Unexpected Changes
 
 ```powershell
 terraform plan
@@ -951,7 +951,7 @@ Do not apply the plan until unexpected changes are understood.
 
 ---
 
-# 13. Monitoring and Logging
+# 21. Monitoring and Logging
 
 Monitoring is part of the intended project and should be verified or implemented.
 
@@ -971,9 +971,9 @@ Set alerts for meaningful conditions, such as high CPU, low database storage, re
 
 ---
 
-# 14. Backup and Recovery
+# 22. Backup and Recovery
 
-## 14.1 RDS Backup
+## 22.1 RDS Backup
 
 1. Check automated-backup retention.
 2. Verify recent snapshots or recovery points.
@@ -981,7 +981,7 @@ Set alerts for meaningful conditions, such as high CPU, low database storage, re
 4. Test restoring to a separate database instance.
 5. Document recovery time and data-loss objectives.
 
-## 14.2 Infrastructure Recovery
+## 22.2 Infrastructure Recovery
 
 1. Inspect Terraform state.
 2. Verify the AWS resources that currently exist.
@@ -994,7 +994,7 @@ Set alerts for meaningful conditions, such as high CPU, low database storage, re
 
 ---
 
-# 15. Daily Operational Checklist
+# 23. Daily Operational Checklist
 
 - [ ] Jenkins service is running.
 - [ ] Recent pipeline builds completed successfully.
@@ -1010,7 +1010,7 @@ Set alerts for meaningful conditions, such as high CPU, low database storage, re
 
 ---
 
-# 16. Project Completion Criteria
+# 24. Project Completion Criteria
 
 The project should be considered successfully deployed only after verifying all of the following:
 
