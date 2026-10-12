@@ -28,6 +28,52 @@ Terraform provisions AWS infrastructure, Jenkins automates the CI/CD pipeline, D
 
 ## 1.1 Architecture
 
+                         USERS
+                           |
+                           v
+                    Internet Gateway
+                           |
+                           v
+                    Public Load Balancer
+                           |
+                           v
+                  Amazon EKS Cluster
+                 /                   \
+                v                     v
+          Frontend Pods          Backend Pods
+                |                     |
+                |                     v
+                |              RDS MySQL:3306
+                |                     |
+                +---------------------+
+                                      |
+                                      v
+                              bookingdb Database
+                                  bookings Table
+
+
+CI/CD PIPELINE
+
+Developer
+    |
+    v
+GitHub Repository
+    |
+    v
+Jenkins on EC2
+    |
+    v
+Docker Build
+    |
+    v
+Amazon ECR
+    |
+    v
+Amazon EKS Deployment
+    |
+    v
+Application Running
+
 ```text
                          USERS
                            |
