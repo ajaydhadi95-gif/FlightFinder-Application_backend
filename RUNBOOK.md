@@ -309,35 +309,39 @@ Avoid setting up builds on the controller in a production environment when a sep
 
 ---
 
-# 6. Amazon EKS Setup
+# Runbook 06: Amazon EKS Setup
 
-EKS provides the managed Kubernetes control plane.
+**Project:** Three-Tier Application on AWS  
+**Cluster Name:** `devops-eks`  
+**AWS Region:** `ap-south-1`
 
-The current Terraform configuration specifies:
+## 6. Amazon EKS Setup
 
-- Cluster name: `devops-eks`
-- Kubernetes version configured in Terraform: `1.34`
-- Region: `ap-south-1`
-- Desired worker nodes: `2`
-- Minimum worker nodes: `2`
-- Maximum worker nodes: `3`
-- Worker instance type: `t3.medium`
+Amazon EKS provides the managed Kubernetes control plane for running the application.
 
-Verify that the configured Kubernetes version is supported by AWS when creating or updating the cluster.
+### Configuration
 
-## 6.1 Check EKS Status
+| Setting | Value |
+|---|---|
+| Cluster name | `devops-eks` |
+| Kubernetes version | `1.34` |
+| AWS Region | `ap-south-1` |
+| Desired worker nodes | 2 |
+| Minimum worker nodes | 2 |
+| Maximum worker nodes | 3 |
+| Worker instance type | `t3.medium` |
 
-From a machine with AWS CLI configured:
+Verify that Kubernetes version `1.34` is supported by AWS EKS before creating the cluster.
+
+## 6.1 Check EKS Cluster Status
+
+Run in PowerShell:
 
 ```powershell
-aws eks describe-cluster `
-  --name devops-eks `
-  --region ap-south-1 `
-  --query "cluster.status" `
-  --output text
+aws eks describe-cluster --name devops-eks --region ap-south-1 --query "cluster.status" --output text
 ```
 
-Expected result for a healthy active cluster:
+**Expected output:**
 
 ```text
 ACTIVE
@@ -345,43 +349,64 @@ ACTIVE
 
 ## 6.2 Configure kubectl
 
+Connect `kubectl` to the EKS cluster:
+
 ```powershell
-aws eks update-kubeconfig `
-  --name devops-eks `
-  --region ap-south-1
+aws eks update-kubeconfig --name devops-eks --region ap-south-1
 ```
 
-Verify connectivity:
+Check worker nodes:
 
 ```powershell
 kubectl get nodes
+```
+
+Check all Kubernetes pods:
+
+```powershell
 kubectl get pods -A
 ```
 
-Expected: worker nodes should be `Ready` once the node group is provisioned and healthy.
+**Expected result:** Worker nodes should show `Ready` when the node group is provisioned and healthy.
 
-## 6.3 If kubectl Cannot Connect
+## 6.3 Troubleshooting
 
-Check:
+If `kubectl` cannot connect, check the following:
 
-- EKS cluster status.
-- AWS identity used by the CLI.
-- EKS access entries or required cluster authentication permissions.
-- Kubernetes API endpoint reachability.
-- Network restrictions if the endpoint is private.
-- Worker node status and IAM permissions.
+1. EKS cluster status.
+2. AWS identity and credentials.
+3. EKS access entries and cluster authentication permissions.
+4. Kubernetes API endpoint connectivity.
+5. Network restrictions if the API endpoint is private.
+6. Worker node health and IAM permissions.
 
 Useful commands:
 
 ```powershell
 aws sts get-caller-identity
-
-aws eks describe-cluster `
-  --name devops-eks `
-  --region ap-south-1
 ```
 
----
+```powershell
+aws eks describe-cluster --name devops-eks --region ap-south-1
+```
+
+```powershell
+kubectl get nodes
+```
+
+```powershell
+kubectl cluster-info
+```
+
+## 6.4 Completion Checklist
+
+- [ ] EKS cluster status is `ACTIVE`.
+- [ ] `kubectl` is configured successfully.
+- [ ] Worker nodes are `Ready`.
+- [ ] Kubernetes pods can be listed.
+- [ ] AWS credentials and EKS permissions are working.
+
+**Result:** The EKS cluster is ready for deploying the frontend and backend containers using Kubernetes manifests.
 
 # Runbook 07: Docker Hub Image Management and EKS Deployment
 
