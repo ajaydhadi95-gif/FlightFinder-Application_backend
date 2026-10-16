@@ -10,6 +10,9 @@ pipeline {
 
         DOCKER_IMAGE     = 'ajaydhadi95/booking_backend'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
+         DB_USERNAME = credentials('rds-db-username')
+        DB_PASSWORD = credentials('rds-db-password')
+
     }
 
     stages {
@@ -85,7 +88,18 @@ pipeline {
                 '''
             }
         }
-
+        stage('Configure Database Secret') {
+    steps {
+        sh '''
+            set +x
+            kubectl create secret generic backend-db-secret \
+              --namespace default \
+              --from-literal=username="$DB_USERNAME" \
+              --from-literal=password="$DB_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+        '''
+    }
+}
         stage('Deploy Backend to EKS') {
             steps {
                 sh '''
