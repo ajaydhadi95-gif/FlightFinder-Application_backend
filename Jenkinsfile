@@ -2,17 +2,17 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION       = 'ap-south-1'
-        EKS_CLUSTER_NAME = 'devops-eks'
-        K8S_NAMESPACE    = 'default'
-        DEPLOYMENT_NAME  = 'backend'
-        CONTAINER_NAME   = 'backend'
+        AWS_REGION         = 'ap-south-1'
+        EKS_CLUSTER_NAME   = 'devops-eks'
+        K8S_NAMESPACE      = 'default'
+        DEPLOYMENT_NAME    = 'backend'
+        CONTAINER_NAME     = 'backend'
 
-        DOCKER_IMAGE     = 'ajaydhadi95/booking_backend'
+        DOCKER_IMAGE       = 'ajaydhadi95/booking_backend'
         DOCKER_CREDENTIALS = 'dockerhub-credentials'
-         DB_USERNAME = credentials('rds-db-username')
-        DB_PASSWORD = credentials('rds-db-password')
 
+        DB_USERNAME = credentials('rds-db-username')
+        DB_PASSWORD = credentials('rds-db-password')
     }
 
     stages {
@@ -41,6 +41,7 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
+                    set -eu
                     docker build \
                       -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
                       -t ${DOCKER_IMAGE}:latest .
@@ -59,7 +60,6 @@ pipeline {
                 ]) {
                     sh '''
                         set -eu
-
                         echo "$DOCKER_PASSWORD" | docker login \
                           -u "$DOCKER_USER" \
                           --password-stdin
@@ -83,23 +83,25 @@ pipeline {
                       --name "$EKS_CLUSTER_NAME"
 
                     kubectl get nodes
-                    kubectl get secret backend-db-secret \
-                      -n "$K8S_NAMESPACE"
                 '''
             }
         }
+
         stage('Configure Database Secret') {
-    steps {
-        sh '''
-            set +x
-            kubectl create secret generic backend-db-secret \
-              --namespace default \
-              --from-literal=username="$DB_USERNAME" \
-              --from-literal=password="$DB_PASSWORD" \
-              --dry-run=client -o yaml | kubectl apply -f -
-        '''
-    }
-}
+            steps {
+                sh '''
+                    set +x
+                    set -eu
+
+                    kubectl create secret generic backend-db-secret \
+                      --namespace "$K8S_NAMESPACE" \
+                      --from-literal=username="$DB_USERNAME" \
+                      --from-literal=password="$DB_PASSWORD" \
+                      --dry-run=client -o yaml | kubectl apply -f -
+                '''
+            }
+        }
+
         stage('Deploy Backend to EKS') {
             steps {
                 sh '''
@@ -123,6 +125,8 @@ pipeline {
         stage('Verify Deployment') {
             steps {
                 sh '''
+                    set -eu
+
                     echo "===== Backend Deployment ====="
                     kubectl get deployment backend -n default
 
@@ -138,13 +142,13 @@ pipeline {
 
     post {
         success {
-            echo "Deployment Successful!"
+            echo 'Deployment Successful!'
             cleanWs()
             sh 'docker image prune -f'
         }
 
         failure {
-            echo "Deployment Failed!"
+            echo 'Deployment Failed!'
             cleanWs()
         }
     }
