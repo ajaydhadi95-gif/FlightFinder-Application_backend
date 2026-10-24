@@ -1,4 +1,5 @@
 
+# 1. Stable Backend Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -6,15 +7,18 @@ metadata:
   namespace: default
   labels:
     app: backend
+    version: stable
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: backend
+      version: stable
   template:
     metadata:
       labels:
         app: backend
+        version: stable
     spec:
       containers:
         - name: backend
@@ -56,7 +60,9 @@ spec:
             limits:
               cpu: "500m"
               memory: "1Gi"
+
 ---
+# 2. Stable Backend Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -66,6 +72,88 @@ spec:
   type: ClusterIP
   selector:
     app: backend
+    version: stable
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+
+---
+# 3. Canary Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-canary
+  namespace: default
+  labels:
+    app: backend
+    version: canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: canary
+    spec:
+      containers:
+        - name: backend
+          image: ajaydhadi95/booking_backend:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://devops-mysql.cvcqquy8ogz9.ap-south-1.rds.amazonaws.com:3306/bookingdb"
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: backend-db-secret
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-db-secret
+                  key: password
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+
+---
+# 4. Canary Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-canary-service
+  namespace: default
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+    version: canary
   ports:
     - name: http
       port: 8080

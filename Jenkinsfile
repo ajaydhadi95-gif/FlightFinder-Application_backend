@@ -5,7 +5,11 @@ pipeline {
         AWS_REGION         = 'ap-south-1'
         EKS_CLUSTER_NAME   = 'devops-eks'
         K8S_NAMESPACE      = 'default'
-        DEPLOYMENT_NAME    = 'backend'
+
+        // Stable deployment name in the updated Kubernetes YAML
+        
+        DEPLOYMENT_NAME    = 'backend-stable'
+        CANARY_NAME        = 'backend-canary'
         CONTAINER_NAME     = 'backend'
 
         DOCKER_IMAGE       = 'ajaydhadi95/booking_backend'
@@ -16,7 +20,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -26,6 +29,7 @@ pipeline {
         stage('Maven Build & Test') {
             steps {
                 sh '''
+                    set -eu
                     chmod +x mvnw
                     ./mvnw clean test
                 '''
@@ -34,7 +38,10 @@ pipeline {
 
         stage('Package JAR') {
             steps {
-                sh './mvnw clean package -DskipTests'
+                sh '''
+                    set -eu
+                    ./mvnw package -DskipTests
+                '''
             }
         }
 
@@ -59,7 +66,9 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        set +x
                         set -eu
+
                         echo "$DOCKER_PASSWORD" | docker login \
                           -u "$DOCKER_USER" \
                           --password-stdin
@@ -102,12 +111,22 @@ pipeline {
             }
         }
 
-        stage('Deploy Backend to EKS') {
+        stage('Apply Kubernetes Resources') {
             steps {
                 sh '''
                     set -eu
 
                     kubectl apply -f k8s/backend-deployment.yaml
+
+                    echo "Kubernetes resources applied."
+                '''
+            }
+        }
+
+        stage('Deploy Stable Backend') {
+            steps {
+                sh '''
+                    set -eu
 
                     kubectl set image \
                       deployment/${DEPLOYMENT_NAME} \
@@ -122,19 +141,52 @@ pipeline {
             }
         }
 
+        stage('Deploy Canary Backend') {
+            steps {
+                sh '''
+                    set -eu
+
+                    kubectl set image \
+                      deployment/${CANARY_NAME} \
+                      ${CONTAINER_NAME}=${DOCKER_IMAGE}:${BUILD_NUMBER} \
+                      -n ${K8S_NAMESPACE}
+
+                    kubectl rollout status \
+                      deployment/${CANARY_NAME} \
+                      -n ${K8S_NAMESPACE} \
+                      --timeout=300s
+                '''
+            }
+        }
+
         stage('Verify Deployment') {
             steps {
                 sh '''
                     set -eu
 
-                    echo "===== Backend Deployment ====="
-                    kubectl get deployment backend -n default
+                    echo "===== Stable and Canary Deployments ====="
+                    kubectl get deployments \
+                      ${DEPLOYMENT_NAME} ${CANARY_NAME} \
+                      -n ${K8S_NAMESPACE}
 
                     echo "===== Backend Pods ====="
-                    kubectl get pods -l app=backend -n default
+                    kubectl get pods \
+                      -l app=backend \
+                      -n ${K8S_NAMESPACE} \
+                      -o wide
 
-                    echo "===== Backend Service ====="
-                    kubectl get svc backend-service -n default
+                    echo "===== Backend Services ====="
+                    kubectl get svc \
+                      backend-service backend-canary-service \
+                      -n ${K8S_NAMESPACE}
+
+                    echo "===== Stable Service Endpoints ====="
+                    kubectl get endpoints backend-service \
+                      -n ${K8S_NAMESPACE}
+
+                    echo "===== Canary Service Endpoints ====="
+                    kubectl get endpoints backend-canary-service \
+                      -n ${K8S_NAMESPACE}
                 '''
             }
         }
@@ -142,13 +194,13 @@ pipeline {
 
     post {
         success {
-            echo 'Deployment Successful!'
+            echo 'Stable and Canary Backend Deployment Successful!'
             cleanWs()
             sh 'docker image prune -f'
         }
 
         failure {
-            echo 'Deployment Failed!'
+            echo 'Deployment Failed! Check the failed stage logs.'
             cleanWs()
         }
     }
