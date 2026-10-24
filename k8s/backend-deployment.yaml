@@ -13,7 +13,6 @@ spec:
   selector:
     matchLabels:
       app: backend
-      version: stable
   template:
     metadata:
       labels:
@@ -87,18 +86,18 @@ metadata:
   name: backend-canary
   namespace: default
   labels:
-    app: backend
+    app: backend-canary
     version: canary
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: backend
+      app: backend-canary
       version: canary
   template:
     metadata:
       labels:
-        app: backend
+        app: backend-canary
         version: canary
     spec:
       containers:
@@ -152,7 +151,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: backend
+    app: backend-canary
     version: canary
   ports:
     - name: http
