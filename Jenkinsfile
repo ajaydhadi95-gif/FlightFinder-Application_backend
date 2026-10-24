@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -6,9 +7,7 @@ pipeline {
         EKS_CLUSTER_NAME   = 'devops-eks'
         K8S_NAMESPACE      = 'default'
 
-        // Stable deployment name in the updated Kubernetes YAML
-        
-        DEPLOYMENT_NAME    = 'backend-stable'
+        DEPLOYMENT_NAME    = 'backend'
         CANARY_NAME        = 'backend-canary'
         CONTAINER_NAME     = 'backend'
 
@@ -20,6 +19,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -49,6 +49,7 @@ pipeline {
             steps {
                 sh '''
                     set -eu
+
                     docker build \
                       -t ${DOCKER_IMAGE}:${BUILD_NUMBER} \
                       -t ${DOCKER_IMAGE}:latest .
@@ -91,6 +92,7 @@ pipeline {
                       --region "$AWS_REGION" \
                       --name "$EKS_CLUSTER_NAME"
 
+                    echo "===== EKS Nodes ====="
                     kubectl get nodes
                 '''
             }
@@ -116,9 +118,10 @@ pipeline {
                 sh '''
                     set -eu
 
+                    echo "===== Applying Backend Resources ====="
                     kubectl apply -f k8s/backend-deployment.yaml
 
-                    echo "Kubernetes resources applied."
+                    echo "Kubernetes resources applied successfully."
                 '''
             }
         }
@@ -128,10 +131,14 @@ pipeline {
                 sh '''
                     set -eu
 
+                    echo "===== Updating Stable Backend ====="
+
                     kubectl set image \
                       deployment/${DEPLOYMENT_NAME} \
                       ${CONTAINER_NAME}=${DOCKER_IMAGE}:${BUILD_NUMBER} \
                       -n ${K8S_NAMESPACE}
+
+                    echo "===== Waiting for Stable Rollout ====="
 
                     kubectl rollout status \
                       deployment/${DEPLOYMENT_NAME} \
@@ -146,10 +153,14 @@ pipeline {
                 sh '''
                     set -eu
 
+                    echo "===== Updating Canary Backend ====="
+
                     kubectl set image \
                       deployment/${CANARY_NAME} \
                       ${CONTAINER_NAME}=${DOCKER_IMAGE}:${BUILD_NUMBER} \
                       -n ${K8S_NAMESPACE}
+
+                    echo "===== Waiting for Canary Rollout ====="
 
                     kubectl rollout status \
                       deployment/${CANARY_NAME} \
@@ -171,13 +182,16 @@ pipeline {
 
                     echo "===== Backend Pods ====="
                     kubectl get pods \
-                      -l app=backend \
+                      -l 'app in (backend,backend-canary)' \
                       -n ${K8S_NAMESPACE} \
                       -o wide
 
-                    echo "===== Backend Services ====="
-                    kubectl get svc \
-                      backend-service backend-canary-service \
+                    echo "===== Stable Backend Service ====="
+                    kubectl get svc backend-service \
+                      -n ${K8S_NAMESPACE}
+
+                    echo "===== Canary Backend Service ====="
+                    kubectl get svc backend-canary-service \
                       -n ${K8S_NAMESPACE}
 
                     echo "===== Stable Service Endpoints ====="
@@ -187,6 +201,12 @@ pipeline {
                     echo "===== Canary Service Endpoints ====="
                     kubectl get endpoints backend-canary-service \
                       -n ${K8S_NAMESPACE}
+
+                    echo "===== Deployed Images ====="
+                    kubectl get deployments \
+                      ${DEPLOYMENT_NAME} ${CANARY_NAME} \
+                      -n ${K8S_NAMESPACE} \
+                      -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.template.spec.containers[0].image}{"\n"}{end}'
                 '''
             }
         }
@@ -195,8 +215,8 @@ pipeline {
     post {
         success {
             echo 'Stable and Canary Backend Deployment Successful!'
-            cleanWs()
             sh 'docker image prune -f'
+            cleanWs()
         }
 
         failure {
